@@ -28,7 +28,10 @@ async function main() {
   writeFileSync(file, HTML);
   const url = pathToFileURL(file).href;
 
-  const agent = await createBrowserAgent({ browser: { headless: false } });
+  const agent = await createBrowserAgent({
+    browser: { headless: false },
+    trace: { outputDir: "./traces" },
+  });
   try {
     await agent.act(
       `打开 ${url}，在用户名输入框填入 admin，密码输入框填入 123456，点击登录按钮，确认 #out 元素文本为 OK 后调用 submitDone`

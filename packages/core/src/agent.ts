@@ -8,7 +8,9 @@ import {
 import { PageManager } from "./browser/page.js";
 import { createDeepSeekModel } from "./llm/index.js";
 import { createBrowserTools } from "./tools/index.js";
+import { TraceRecorder } from "./logger/index.js";
 import type { ActOptions, AgentOptions } from "./types.js";
+import type { TraceConfig } from "./logger/types.js";
 
 const ACT_SYSTEM_PROMPT = `You are a browser automation agent. You drive a real Chromium browser via tools.
 
@@ -50,17 +52,21 @@ export class BrowserAgent {
   private pageManager: PageManager;
   private model: LanguageModel;
   private maxSteps: number;
+  private traceConfig?: TraceConfig;
+  private traceSeq: number = 0;
 
   private constructor(
     handles: BrowserHandles,
     pageManager: PageManager,
     model: LanguageModel,
-    maxSteps: number
+    maxSteps: number,
+    traceConfig?: TraceConfig
   ) {
     this.handles = handles;
     this.pageManager = pageManager;
     this.model = model;
     this.maxSteps = maxSteps;
+    this.traceConfig = traceConfig;
   }
 
   static async create(options: AgentOptions = {}): Promise<BrowserAgent> {
@@ -71,7 +77,8 @@ export class BrowserAgent {
       handles,
       pageManager,
       model,
-      options.maxSteps ?? 50
+      options.maxSteps ?? 50,
+      options.trace
     );
   }
 
@@ -80,13 +87,40 @@ export class BrowserAgent {
     const tools = createBrowserTools(this.pageManager);
     const maxSteps = opts.maxSteps ?? this.maxSteps;
 
-    await generateText({
-      model: this.model,
-      tools,
-      system: ACT_SYSTEM_PROMPT,
-      prompt,
-      stopWhen: [stepCountIs(maxSteps), hasToolCall("submitDone")],
-    });
+    let recorder: TraceRecorder | undefined;
+    if (this.traceConfig) {
+      this.traceSeq++;
+      recorder = new TraceRecorder(
+        this.pageManager,
+        this.traceConfig,
+        this.traceSeq,
+        instruction
+      );
+      await recorder.onStart();
+    }
+
+    try {
+      await generateText({
+        model: this.model,
+        tools,
+        system: ACT_SYSTEM_PROMPT,
+        prompt,
+        stopWhen: [stepCountIs(maxSteps), hasToolCall("submitDone")],
+        ...(recorder
+          ? {
+              experimental_onToolCallStart: (e) => recorder!.onToolCallStart(e),
+              experimental_onToolCallFinish: (e) =>
+                recorder!.onToolCallFinish(e),
+              onStepFinish: (e) => recorder!.onStepFinish(e),
+              onFinish: (e) => recorder!.onFinish(e),
+            }
+          : {}),
+      });
+    } finally {
+      if (recorder) {
+        await recorder.flush();
+      }
+    }
   }
 
   async close(): Promise<void> {

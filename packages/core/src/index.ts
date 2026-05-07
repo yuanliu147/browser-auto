@@ -10,3 +10,10 @@ export type {
   LLMConfig,
 } from "./types.js";
 export type { BrowserHandles } from "./browser/index.js";
+export type {
+  TraceConfig,
+  TraceData,
+  TraceStep,
+  TraceToolCall,
+  TraceSummary,
+} from "./logger/types.js";

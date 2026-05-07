@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext } from "playwright";
+import type { TraceConfig } from "./logger/types.js";
 
 export interface BrowserConfig {
   headless?: boolean;
@@ -18,6 +19,7 @@ export interface AgentOptions {
   browser?: BrowserConfig;
   llm?: LLMConfig;
   maxSteps?: number;
+  trace?: TraceConfig;
 }
 
 export interface ActOptions {

@@ -21,6 +21,13 @@ TBD - created by archiving change init-browser-agent. Update Purpose after archi
 - **WHEN** 用户传入 `variables: { keyword: '手机' }`
 - **THEN** Agent SHALL 在指令中将 `${keyword}` 替换为实际值后执行
 
+#### Scenario: Action with trace enabled at Agent level
+
+- **WHEN** 用户创建 Agent 时传入 `trace: { outputDir: './traces' }`
+- **AND** 调用 `await agent.act('登录系统')`
+- **THEN** Agent SHALL 在执行过程中采集 LLM reasoning、工具调用和截图
+- **AND** 执行完成后 SHALL 在 `./traces/001-登录系统-143205/` 目录下生成 `trace.json`、`log.txt` 和 `screenshots/`
+
 ### Requirement: Agent supports multi-page operations
 
 系统 SHALL 支持在一个 Browser Context 内管理多个 Page/Tab。
