@@ -3,12 +3,14 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { BrowserConfig } from "../types.js";
+import { launchChrome, waitForCDP } from "./launcher.js";
 
 export interface BrowserHandles {
   browser: Browser;
   context: BrowserContext;
   ownsBrowser: boolean;
   ownsContext: boolean;
+  browserPid?: number;
 }
 
 const CDP_PORT = 9223;
@@ -57,21 +59,26 @@ export async function createBrowserContext(
     browser = b;
     context = browser.contexts()[0] ?? (await browser.newContext());
   } catch {
-    // 2. 启动新的本地 Chrome，固定隔离用户目录
-    context = await chromium.launchPersistentContext(getDefaultUserDataDir(), {
-      headless: config.headless ?? false,
-      channel: "chrome",
-      args: [
-        ...(config.args ?? []),
-        `--remote-debugging-port=${CDP_PORT}`,
-        "--no-first-run",
-        "--no-default-browser-check",
-      ],
-    });
-    const b = context.browser();
-    if (!b) throw new Error("launchPersistentContext returned null browser");
-    browser = b;
+    // 2. 外部启动新的 Chrome，固定隔离用户目录
+    const extraArgs = [...(config.args ?? [])];
+    if (config.headless) {
+      extraArgs.push("--headless=new");
+    }
+
+    const proc = launchChrome(getDefaultUserDataDir(), CDP_PORT, extraArgs);
+    await waitForCDP(CDP_PORT);
+
+    browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+    context = browser.contexts()[0] ?? (await browser.newContext());
     ownsBrowser = true;
+
+    return {
+      browser,
+      context,
+      ownsBrowser,
+      ownsContext: false,
+      browserPid: proc.pid ?? undefined,
+    };
   }
 
   return { browser, context, ownsBrowser, ownsContext: false };
@@ -80,9 +87,21 @@ export async function createBrowserContext(
 export async function closeBrowserContext(
   handles: BrowserHandles
 ): Promise<void> {
-  if (handles.ownsBrowser) {
-    await handles.browser.close();
-  } else if (handles.ownsContext) {
-    await handles.context.close();
+  if (handles.ownsBrowser && handles.browserPid) {
+    try {
+      process.kill(handles.browserPid, "SIGKILL");
+    } catch {
+      /* ignore — Chrome may already be gone */
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  try {
+    if (handles.ownsBrowser) {
+      await handles.browser.close();
+    } else if (handles.ownsContext) {
+      await handles.context.close();
+    }
+  } catch {
+    /* ignore — connection may already be dead */
   }
 }
