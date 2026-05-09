@@ -1,10 +1,10 @@
-# browser-agent Specification
+# browser-agent Specification (Delta)
 
 ## Purpose
 
-TBD - created by archiving change init-browser-agent. Update Purpose after archive.
+本文件记录 browser-agent capability 的变更需求。循环驱动方式从 `ai` SDK `generateText` 迁移为自建循环，API 和行为保持不变。
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Agent can perform semantic actions
 
@@ -27,16 +27,6 @@ TBD - created by archiving change init-browser-agent. Update Purpose after archi
 - **AND** 调用 `await agent.act('登录系统')`
 - **THEN** Agent SHALL 在执行过程中采集 LLM reasoning、工具调用和截图
 - **AND** 执行完成后 SHALL 在 `./traces/001-登录系统-143205/` 目录下生成 `trace.json`、`log.txt` 和 `screenshots/`
-
-### Requirement: Agent supports multi-page operations
-
-系统 SHALL 支持在一个 Browser Context 内管理多个 Page/Tab。
-
-#### Scenario: Open new tab and switch
-
-- **WHEN** Agent 执行操作时页面打开了新 tab
-- **THEN** current page SHALL 自动切换到新 tab
-- **AND** `tabs` 工具 SHALL 能列出所有 tab 并支持手动切换
 
 ### Requirement: Agent uses DeepSeek model
 

@@ -1,12 +1,13 @@
-import { tool } from "ai";
 import { z } from "zod";
 import type { PageManager } from "../browser/page.js";
+import type { Tool } from "../loop/types.js";
 
-export function createTabsTool(pageManager: PageManager) {
-  return tool({
+export function createTabsTool(pageManager: PageManager): Tool {
+  return {
+    name: "tabs",
     description:
       "Manage browser tabs: list all, switch to one by index, or open a new one.",
-    inputSchema: z.object({
+    parameters: z.object({
       action: z.enum(["list", "switch", "new"]),
       url: z.string().optional().describe("URL to open (for action=new)"),
       index: z.number().optional().describe("Tab index (for action=switch)"),
@@ -25,14 +26,14 @@ export function createTabsTool(pageManager: PageManager) {
       }
       if (action === "switch") {
         if (index === undefined) throw new Error("switch requires index");
-        const p = await pageManager.switchByIndex(index);
+        const p = await pageManager.switchByIndex(index as number);
         return { ok: true, url: p.url() };
       }
       if (action === "new") {
-        const p = await pageManager.newPage(url);
+        const p = await pageManager.newPage(url as string | undefined);
         return { ok: true, url: p.url() };
       }
       throw new Error(`Unknown action: ${action as string}`);
     },
-  });
+  };
 }

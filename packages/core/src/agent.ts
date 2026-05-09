@@ -1,41 +1,22 @@
-import { generateText, stepCountIs, hasToolCall } from "ai";
-import type { LanguageModel } from "ai";
 import {
   createBrowserContext,
   closeBrowserContext,
   type BrowserHandles,
 } from "./browser/index.js";
 import { PageManager } from "./browser/page.js";
-import { createDeepSeekModel } from "./llm/index.js";
+import { createDeepSeekProvider } from "./llm/provider.js";
 import { createBrowserTools } from "./tools/index.js";
 import { TraceRecorder } from "./logger/index.js";
 import type { ActOptions, AgentOptions } from "./types.js";
-import type { TraceConfig } from "./logger/types.js";
-
-const ACT_SYSTEM_PROMPT = `You are a browser automation agent. You drive a real Chromium browser via tools.
-
-Available tools:
-- navigate(url)            : open a URL in the current tab
-- click(selector|text)     : click an element by CSS selector or visible text
-- fill(selector|text,value): fill a text input
-- press(key)               : press a keyboard key (Enter, Escape, Tab, ...)
-- hover(selector|text)     : hover an element
-- select(selector|text,value): pick an option in <select>
-- waitFor(selector|ms,state): wait for an element or a fixed duration
-- screenshot()             : take a screenshot of the current tab
-- getSnapshot()            : get a structured a11y tree of the current page (use this when you don't know the page layout)
-- getText(selector|text)   : read the text content of an element
-- scroll(direction,amount) : scroll the current page
-- tabs(action,...)         : list/switch/new tabs (the "current tab" auto-switches when a new one opens)
-- submitDone(result?)      : MUST be called exactly once at the end to mark the task as complete
-
-Rules:
-1. Think about the goal, then act with the smallest sequence of tool calls.
-2. Prefer concrete CSS selectors when you have them; fall back to visible text otherwise.
-3. If you don't know the page layout, call getSnapshot() first.
-4. When a new tab opens, the "current page" auto-switches — keep working on the active tab.
-5. When the task is complete, call submitDone() once. Do NOT keep calling tools after that.
-6. If a tool errors, read the error and adjust — do not retry the exact same call blindly.`;
+import type { TraceConfig, TraceData } from "./logger/types.js";
+import { AgentLoop } from "./loop/loop.js";
+import type { Message } from "./loop/types.js";
+import { InMemoryPathMemory, ExactMemoryKey } from "./memory/types.js";
+import { extractMinimalPath } from "./memory/extractor.js";
+import { replayPath } from "./memory/replayer.js";
+import type { MemorizedPath } from "./memory/types.js";
+import { ACT_SYSTEM_PROMPT } from "./prompts/system.js";
+import { buildHandoverMessages } from "./prompts/handover.js";
 
 function applyVariables(
   instruction: string,
@@ -50,43 +31,99 @@ function applyVariables(
 export class BrowserAgent {
   private handles: BrowserHandles;
   private pageManager: PageManager;
-  private model: LanguageModel;
-  private maxSteps: number;
+  private loop: AgentLoop;
   private traceConfig?: TraceConfig;
   private traceSeq: number = 0;
+  private memory: InMemoryPathMemory;
 
   private constructor(
     handles: BrowserHandles,
     pageManager: PageManager,
-    model: LanguageModel,
-    maxSteps: number,
+    loop: AgentLoop,
     traceConfig?: TraceConfig
   ) {
     this.handles = handles;
     this.pageManager = pageManager;
-    this.model = model;
-    this.maxSteps = maxSteps;
+    this.loop = loop;
     this.traceConfig = traceConfig;
+    this.memory = new InMemoryPathMemory();
   }
 
   static async create(options: AgentOptions = {}): Promise<BrowserAgent> {
     const handles = await createBrowserContext(options.browser);
     const pageManager = new PageManager(handles.context);
-    const model = createDeepSeekModel(options.llm);
-    return new BrowserAgent(
-      handles,
-      pageManager,
-      model,
-      options.maxSteps ?? 50,
-      options.trace
-    );
+    const provider = createDeepSeekProvider(options.llm);
+    const loop = new AgentLoop(provider, options.maxSteps ?? 50);
+    return new BrowserAgent(handles, pageManager, loop, options.trace);
   }
 
   async act(instruction: string, opts: ActOptions = {}): Promise<void> {
     const prompt = applyVariables(instruction, opts.variables);
     const tools = createBrowserTools(this.pageManager);
-    const maxSteps = opts.maxSteps ?? this.maxSteps;
+    const maxSteps = opts.maxSteps ?? 50;
 
+    // 1. Check memory
+    const memoryKey = new ExactMemoryKey(prompt);
+    const memorizedPath = this.memory.get(memoryKey);
+
+    if (memorizedPath) {
+      const replayResult = await replayPath(memorizedPath, this.pageManager);
+
+      if (replayResult.status === "success") {
+        memorizedPath.hitCount++;
+        return;
+      }
+
+      if (
+        replayResult.status === "failed" &&
+        replayResult.reason === "structural"
+      ) {
+        this.memory.invalidate(memoryKey);
+      }
+
+      if (replayResult.status === "partial" && replayResult.remainingSteps) {
+        // Handover to LLM from breakpoint
+        return await this.runWithHandover(
+          prompt,
+          tools,
+          maxSteps,
+          memorizedPath,
+          replayResult.completedSteps ?? [],
+          replayResult.remainingSteps,
+          replayResult.failedAt ?? replayResult.completedSteps?.length ?? 0,
+          replayResult.reason
+        );
+      }
+    }
+
+    // 2. Run LLM loop
+    const result = await this.runLoop(prompt, tools, maxSteps);
+
+    // 3. Extract and memorize on success
+    if (result.success && result.traceData) {
+      const path = extractMinimalPath(result.traceData);
+      if (path) {
+        this.memory.set(memoryKey, path);
+      }
+    }
+  }
+
+  private async runLoop(
+    prompt: string,
+    tools: Record<
+      string,
+      {
+        name: string;
+        description: string;
+        parameters: unknown;
+        execute: (args: Record<string, unknown>) => Promise<unknown>;
+      }
+    >,
+    maxSteps: number,
+    options?: {
+      initialMessages?: Message[];
+    }
+  ): Promise<{ success: boolean; traceData?: TraceData }> {
     let recorder: TraceRecorder | undefined;
     if (this.traceConfig) {
       this.traceSeq++;
@@ -94,33 +131,108 @@ export class BrowserAgent {
         this.pageManager,
         this.traceConfig,
         this.traceSeq,
-        instruction
+        prompt
       );
       await recorder.onStart();
     }
 
+    const loop = new AgentLoop(this.loop.model, maxSteps);
+
     try {
-      await generateText({
-        model: this.model,
-        tools,
-        system: ACT_SYSTEM_PROMPT,
-        prompt,
-        stopWhen: [stepCountIs(maxSteps), hasToolCall("submitDone")],
-        ...(recorder
-          ? {
-              experimental_onToolCallStart: (e) => recorder!.onToolCallStart(e),
-              experimental_onToolCallFinish: (e) =>
-                recorder!.onToolCallFinish(e),
-              onStepFinish: (e) => recorder!.onStepFinish(e),
-              onFinish: (e) => recorder!.onFinish(e),
-            }
-          : {}),
+      const result = await loop.run(prompt, tools, ACT_SYSTEM_PROMPT, {
+        initialMessages: options?.initialMessages,
+        onToolCallStart: async (e) => {
+          if (recorder) {
+            await recorder.onToolCallStart(
+              e.toolCall.id,
+              e.toolCall.name,
+              e.toolCall.arguments
+            );
+          }
+        },
+        onToolCallFinish: async (e) => {
+          if (recorder) {
+            await recorder.onToolCallFinish(
+              e.toolCall.id,
+              e.success,
+              e.output,
+              e.error,
+              e.durationMs
+            );
+          }
+        },
+        onStepFinish: (e) => {
+          if (recorder) {
+            recorder.onStepFinish(
+              e.stepNumber,
+              e.reasoningText,
+              e.toolCalls.map((tc) => ({
+                id: tc.id,
+                name: tc.name,
+                arguments: tc.arguments,
+              }))
+            );
+          }
+        },
+        onFinish: (e) => {
+          if (recorder) {
+            recorder.onFinish(e.finishReason, e.totalUsage);
+          }
+        },
       });
+
+      const traceData = recorder?.getTraceData();
+      return { success: result.success, traceData };
     } finally {
       if (recorder) {
         await recorder.flush();
       }
     }
+  }
+
+  private async runWithHandover(
+    prompt: string,
+    tools: Record<
+      string,
+      {
+        name: string;
+        description: string;
+        parameters: unknown;
+        execute: (args: Record<string, unknown>) => Promise<unknown>;
+      }
+    >,
+    maxSteps: number,
+    memorizedPath: MemorizedPath,
+    completedStepIndices: number[],
+    remainingSteps: Array<{ tool: string; args: Record<string, unknown> }>,
+    failedAt: number,
+    failedReason?: string
+  ): Promise<void> {
+    const failedStep = remainingSteps[0];
+
+    let snapshot = "";
+    try {
+      const page = await this.pageManager.getCurrent();
+      snapshot = await page.locator("body").ariaSnapshot();
+    } catch {
+      snapshot = "Unable to get page snapshot";
+    }
+
+    const selector = failedStep.args.selector as string | undefined;
+    const errorMsg =
+      failedReason ??
+      (selector ? `选择器 "${selector}" 未找到` : "元素定位失败");
+
+    const initialMessages = buildHandoverMessages(
+      prompt,
+      memorizedPath,
+      completedStepIndices,
+      failedAt,
+      errorMsg,
+      snapshot
+    );
+
+    await this.runLoop(prompt, tools, maxSteps, { initialMessages });
   }
 
   async close(): Promise<void> {

@@ -1,10 +1,4 @@
 import { writeFile } from "node:fs/promises";
-import type {
-  OnFinishEvent,
-  OnStepFinishEvent,
-  OnToolCallFinishEvent,
-  OnToolCallStartEvent,
-} from "ai";
 import type { PageManager } from "../browser/page.js";
 import type {
   TraceConfig,
@@ -56,11 +50,11 @@ export class TraceRecorder {
     this.dir = await createTraceDir(this.outputDir, this.seq, this.instruction);
   }
 
-  async onToolCallStart(event: OnToolCallStartEvent): Promise<void> {
-    const toolName = event.toolCall.toolName;
-    const callId = event.toolCall.toolCallId;
-    const args = event.toolCall.input;
-
+  async onToolCallStart(
+    callId: string,
+    toolName: string,
+    args: unknown
+  ): Promise<void> {
     const toolCall: TraceToolCall = {
       callId,
       toolName,
@@ -82,17 +76,22 @@ export class TraceRecorder {
     this.toolCallMap.set(callId, toolCall);
   }
 
-  async onToolCallFinish(event: OnToolCallFinishEvent): Promise<void> {
-    const callId = event.toolCall.toolCallId;
+  async onToolCallFinish(
+    callId: string,
+    success: boolean,
+    output: unknown,
+    error: string | undefined,
+    durationMs: number
+  ): Promise<void> {
     const toolCall = this.toolCallMap.get(callId);
     if (!toolCall) return;
 
-    toolCall.success = event.success;
-    toolCall.durationMs = event.durationMs;
-    if (event.success) {
-      toolCall.result = event.output;
+    toolCall.success = success;
+    toolCall.durationMs = durationMs;
+    if (success) {
+      toolCall.result = output;
     } else {
-      toolCall.result = event.error;
+      toolCall.result = error;
       this.success = false;
     }
 
@@ -108,16 +107,20 @@ export class TraceRecorder {
     }
   }
 
-  onStepFinish(event: OnStepFinishEvent): void {
+  onStepFinish(
+    stepNumber: number,
+    reasoningText: string | undefined,
+    toolCalls: Array<{ id: string; name: string; arguments: unknown }>
+  ): void {
     const step: TraceStep = {
-      stepNumber: event.stepNumber,
-      reasoningText: event.reasoningText,
-      text: event.text,
+      stepNumber,
+      reasoningText,
+      text: reasoningText,
       toolCalls: [],
     };
 
-    for (const tc of event.toolCalls) {
-      const recorded = this.toolCallMap.get(tc.toolCallId);
+    for (const tc of toolCalls) {
+      const recorded = this.toolCallMap.get(tc.id);
       if (recorded) {
         step.toolCalls.push(recorded);
       }
@@ -126,13 +129,16 @@ export class TraceRecorder {
     this.steps.push(step);
   }
 
-  onFinish(event: OnFinishEvent): void {
+  onFinish(
+    finishReason: string,
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+  ): void {
     this.endedAt = new Date();
-    this.finishReason = String(event.finishReason);
+    this.finishReason = finishReason;
     this.totalUsage = {
-      inputTokens: event.totalUsage.inputTokens ?? 0,
-      outputTokens: event.totalUsage.outputTokens ?? 0,
-      totalTokens: event.totalUsage.totalTokens ?? 0,
+      inputTokens: usage.inputTokens ?? 0,
+      outputTokens: usage.outputTokens ?? 0,
+      totalTokens: usage.totalTokens ?? 0,
     };
     for (const step of this.steps) {
       for (const tc of step.toolCalls) {
@@ -179,12 +185,7 @@ export class TraceRecorder {
 
   async flush(): Promise<void> {
     const trace = this.getTraceData();
-
     await writeFile(`${this.dir}/trace.json`, JSON.stringify(trace, null, 2));
-
     await writeFile(`${this.dir}/log.txt`, generateLogText(trace));
-
-    // TODO: Future extension - support remote upload / custom sinks
-    // Example: await uploadToRemote(this.dir, this.getSummary());
   }
 }

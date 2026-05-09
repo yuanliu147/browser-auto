@@ -2,7 +2,7 @@ export { createBrowserAgent, BrowserAgent } from "./agent.js";
 export { createBrowserTools } from "./tools/index.js";
 export { PageManager } from "./browser/page.js";
 export { createBrowserContext, closeBrowserContext } from "./browser/index.js";
-export { createDeepSeekModel } from "./llm/index.js";
+export { createDeepSeekProvider } from "./llm/provider.js";
 export type {
   AgentOptions,
   ActOptions,

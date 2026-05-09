@@ -1,12 +1,13 @@
-import { tool } from "ai";
 import { z } from "zod";
 import type { PageManager } from "../browser/page.js";
+import type { Tool } from "../loop/types.js";
 import { resolveLocator } from "./_helpers.js";
 
-export function createFillTool(pageManager: PageManager) {
-  return tool({
+export function createFillTool(pageManager: PageManager): Tool {
+  return {
+    name: "fill",
     description: "Fill a text input or textarea with the given value.",
-    inputSchema: z.object({
+    parameters: z.object({
       selector: z.string().optional().describe("CSS selector of the input"),
       text: z
         .string()
@@ -16,9 +17,13 @@ export function createFillTool(pageManager: PageManager) {
     }),
     execute: async ({ selector, text, value }) => {
       const page = await pageManager.getCurrent();
-      const locator = resolveLocator(page, selector, text);
-      await locator.first().fill(value);
+      const locator = resolveLocator(
+        page,
+        selector as string | undefined,
+        text as string | undefined
+      );
+      await locator.first().fill(value as string);
       return { ok: true };
     },
-  });
+  };
 }

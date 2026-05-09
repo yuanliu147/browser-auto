@@ -1,4 +1,4 @@
-import type { ToolSet } from "ai";
+import type { Tool } from "../loop/types.js";
 import type { PageManager } from "../browser/page.js";
 import { createNavigateTool } from "./navigate.js";
 import { createClickTool } from "./click.js";
@@ -14,7 +14,9 @@ import { createScrollTool } from "./scroll.js";
 import { createTabsTool } from "./tabs.js";
 import { createSubmitDoneTool } from "./done.js";
 
-export function createBrowserTools(pageManager: PageManager): ToolSet {
+export function createBrowserTools(
+  pageManager: PageManager
+): Record<string, Tool> {
   return {
     navigate: createNavigateTool(pageManager),
     click: createClickTool(pageManager),
