@@ -21,19 +21,24 @@ export class ExactMemoryKey implements MemoryKey {
   }
 }
 
-export interface SemanticHint {
-  tagName?: string;
-  inputType?: string;
-  nearText?: string;
-  ariaLabel?: string;
-  placeholder?: string;
+export interface ElementLocator {
+  textAnchor?: { labelText: string; relation?: string };
+  semantic?: { ariaLabel?: string; placeholder?: string; name?: string };
+  structural?: { tagName: string; formIndex?: number; indexInForm?: number };
+  xpath?: string;
+}
+
+export interface ContextStep {
+  type: "frame" | "shadow" | "modal";
+  matcher: Record<string, unknown>;
 }
 
 export interface PathStep {
   tool: string;
   args: Record<string, unknown>;
-  selectorFallbacks?: string[];
-  semanticHint?: SemanticHint;
+  locator?: ElementLocator;
+  contextPath?: ContextStep[];
+  lastKnownId?: string;
 }
 
 export interface MemorizedPath {

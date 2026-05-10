@@ -5,6 +5,6 @@ export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
   {
-    ignores: ["dist/", "node_modules/", "examples/"],
+    ignores: ["dist/", "node_modules/", "examples/", "benchmarks/"],
   }
 );

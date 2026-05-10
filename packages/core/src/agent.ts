@@ -1,9 +1,9 @@
 import {
-  createBrowserContext,
-  closeBrowserContext,
+  createBrowserConnection,
+  closeBrowser,
   type BrowserHandles,
-} from "./browser/index.js";
-import { PageManager } from "./browser/page.js";
+} from "./cdp/browser.js";
+import { CDPPageManager } from "./cdp/page.js";
 import { createDeepSeekProvider } from "./llm/provider.js";
 import { createBrowserTools } from "./tools/index.js";
 import { TraceRecorder } from "./logger/index.js";
@@ -30,7 +30,7 @@ function applyVariables(
 
 export class BrowserAgent {
   private handles: BrowserHandles;
-  private pageManager: PageManager;
+  private pageManager: CDPPageManager;
   private loop: AgentLoop;
   private traceConfig?: TraceConfig;
   private traceSeq: number = 0;
@@ -38,7 +38,7 @@ export class BrowserAgent {
 
   private constructor(
     handles: BrowserHandles,
-    pageManager: PageManager,
+    pageManager: CDPPageManager,
     loop: AgentLoop,
     traceConfig?: TraceConfig
   ) {
@@ -50,8 +50,9 @@ export class BrowserAgent {
   }
 
   static async create(options: AgentOptions = {}): Promise<BrowserAgent> {
-    const handles = await createBrowserContext(options.browser);
-    const pageManager = new PageManager(handles.context);
+    const handles = await createBrowserConnection();
+    const pageManager = new CDPPageManager(handles.client);
+    await pageManager.init();
     const provider = createDeepSeekProvider(options.llm);
     const loop = new AgentLoop(provider, options.maxSteps ?? 50);
     return new BrowserAgent(handles, pageManager, loop, options.trace);
@@ -212,8 +213,10 @@ export class BrowserAgent {
 
     let snapshot = "";
     try {
-      const page = await this.pageManager.getCurrent();
-      snapshot = await page.locator("body").ariaSnapshot();
+      const result = await this.pageManager.evaluate(`
+        document.body?.innerText?.slice(0, 2000) || 'Unable to get page text'
+      `);
+      snapshot = String(result ?? "");
     } catch {
       snapshot = "Unable to get page snapshot";
     }
@@ -236,7 +239,7 @@ export class BrowserAgent {
   }
 
   async close(): Promise<void> {
-    await closeBrowserContext(this.handles);
+    await closeBrowser(this.handles);
   }
 }
 

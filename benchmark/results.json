@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-05-10T12:23:35.810Z",
+  "environment": {
+    "node": "v22.22.2",
+    "platform": "darwin"
+  },
+  "playwright": {
+    "pw_frame_enum": 4.163425099999984,
+    "pw_cross_frame_query": 11.38909184999999,
+    "pw_bounding_boxes": 28.68741449999999,
+    "pw_frame_eval": 1.2132979000000206
+  },
+  "cdp": {
+    "cdp_frame_enum": 1.592091500000106,
+    "cdp_cross_frame_query": 4.556154099999958,
+    "cdp_bounding_boxes": 0.15709579999997914,
+    "cdp_frame_eval": 0.11399385000008806
+  }
+}

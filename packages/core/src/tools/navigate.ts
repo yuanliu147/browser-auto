@@ -1,8 +1,8 @@
 import { z } from "zod";
-import type { PageManager } from "../browser/page.js";
+import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
 
-export function createNavigateTool(pageManager: PageManager): Tool {
+export function createNavigateTool(pageManager: CDPPageManager): Tool {
   return {
     name: "navigate",
     description: "Navigate to a URL in the current page.",
@@ -10,9 +10,11 @@ export function createNavigateTool(pageManager: PageManager): Tool {
       url: z.string().describe("The URL to navigate to"),
     }),
     execute: async ({ url }) => {
-      const page = await pageManager.getCurrent();
-      await page.goto(url as string);
-      return { ok: true, url: page.url() };
+      await pageManager.navigate(url as string);
+      const { frameTree } = (await pageManager.send("Page.getFrameTree")) as {
+        frameTree: { frame: { url: string } };
+      };
+      return { ok: true, url: frameTree.frame.url };
     },
   };
 }

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <title>中后台表单测试页</title>
+    <style>
+      body {
+        font-family: system-ui;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+      }
+      .form-item {
+        margin: 16px 0;
+      }
+      label {
+        display: inline-block;
+        width: 100px;
+        font-weight: 500;
+      }
+      input,
+      select,
+      textarea {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      .ant-input {
+        composes: input;
+      }
+      .ant-select {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      .ant-switch {
+        width: 44px;
+        height: 22px;
+        border-radius: 11px;
+        background: #ccc;
+        border: none;
+        cursor: pointer;
+        position: relative;
+      }
+      .ant-switch::after {
+        content: "";
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: white;
+        top: 2px;
+        left: 2px;
+        transition: 0.2s;
+      }
+      .ant-switch.checked {
+        background: #1890ff;
+      }
+      .ant-switch.checked::after {
+        left: 24px;
+      }
+      .ant-btn {
+        padding: 6px 16px;
+        border-radius: 4px;
+        border: 1px solid #d9d9d9;
+        background: white;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      .ant-btn-primary {
+        background: #1890ff;
+        color: white;
+        border-color: #1890ff;
+      }
+      #result {
+        margin-top: 20px;
+        padding: 12px;
+        border-radius: 4px;
+        display: none;
+      }
+      #result.success {
+        display: block;
+        background: #f6ffed;
+        border: 1px solid #b7eb8f;
+      }
+      #modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.45);
+      }
+      #modalContent {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        width: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>新建用户</h1>
+    <form id="userForm">
+      <div class="form-item">
+        <label for="username">用户名</label>
+        <input
+          id="username"
+          class="ant-input"
+          placeholder="请输入用户名"
+          required
+        />
+      </div>
+      <div class="form-item">
+        <label for="email">邮箱</label>
+        <input
+          id="email"
+          type="email"
+          class="ant-input"
+          placeholder="请输入邮箱"
+          required
+        />
+      </div>
+      <div class="form-item">
+        <label for="dept">部门</label>
+        <select id="dept" class="ant-select">
+          <option value="">请选择</option>
+          <option value="tech">技术部</option>
+          <option value="product">产品部</option>
+          <option value="ops">运营部</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>状态</label>
+        <button
+          type="button"
+          id="status"
+          class="ant-switch checked"
+          onclick="this.classList.toggle('checked')"
+          aria-label="用户状态"
+        ></button>
+      </div>
+      <div class="form-item">
+        <label for="remark">备注</label>
+        <textarea
+          id="remark"
+          class="ant-input"
+          rows="3"
+          placeholder="请输入备注"
+        ></textarea>
+      </div>
+      <div class="form-item">
+        <button
+          type="button"
+          class="ant-btn"
+          onclick="document.getElementById('modal').style.display = 'block'"
+        >
+          打开弹窗
+        </button>
+        <button
+          type="button"
+          class="ant-btn ant-btn-primary"
+          onclick="submitForm()"
+        >
+          提交
+        </button>
+      </div>
+    </form>
+
+    <div id="result"></div>
+
+    <div id="modal">
+      <div id="modalContent">
+        <h3>确认信息</h3>
+        <p>请确认填写的信息是否正确</p>
+        <button
+          class="ant-btn"
+          onclick="document.getElementById('modal').style.display = 'none'"
+        >
+          取消
+        </button>
+        <button
+          class="ant-btn ant-btn-primary"
+          onclick="
+            document.getElementById('modal').style.display = 'none';
+            submitForm();
+          "
+        >
+          确认提交
+        </button>
+      </div>
+    </div>
+
+    <iframe
+      id="nestedFrame"
+      srcdoc="
+    &lt;!DOCTYPE html&gt;
+    &lt;html&gt;&lt;body&gt;
+      &lt;h3&gt;嵌套 iframe&lt;/h3&gt;
+      &lt;input id='nestedInput' placeholder='iframe 内输入框' /&gt;
+    &lt;/body&gt;&lt;/html&gt;
+  "
+      style="
+        width: 100%;
+        height: 120px;
+        border: 1px solid #ccc;
+        margin-top: 20px;
+      "
+    ></iframe>
+
+    <div id="shadowHost" style="margin-top: 20px"></div>
+
+    <script>
+      // Shadow DOM
+      const host = document.getElementById("shadowHost");
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.innerHTML = `
+      <style>:host { display: block; padding: 12px; border: 1px dashed #999; }</style>
+      <h4>Shadow DOM 区域</h4>
+      <input id="shadowInput" placeholder="shadow 内输入框" />
+      <button id="shadowBtn">Shadow 按钮</button>
+    `;
+
+      function submitForm() {
+        const username = document.getElementById("username").value;
+        const email = document.getElementById("email").value;
+        const result = document.getElementById("result");
+        if (username && email) {
+          result.className = "success";
+          result.textContent = "创建成功：" + username + " (" + email + ")";
+        } else {
+          result.style.display = "block";
+          result.style.background = "#fff2f0";
+          result.style.border = "1px solid #ffccc7";
+          result.textContent = "请填写完整信息";
+        }
+      }
+    </script>
+  </body>
+</html>

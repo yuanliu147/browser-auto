@@ -1,7 +1,7 @@
 export { createBrowserAgent, BrowserAgent } from "./agent.js";
 export { createBrowserTools } from "./tools/index.js";
-export { PageManager } from "./browser/page.js";
-export { createBrowserContext, closeBrowserContext } from "./browser/index.js";
+export { CDPPageManager } from "./cdp/page.js";
+export { createBrowserConnection, closeBrowser } from "./cdp/browser.js";
 export { createDeepSeekProvider } from "./llm/provider.js";
 export type {
   AgentOptions,
@@ -9,7 +9,7 @@ export type {
   BrowserConfig,
   LLMConfig,
 } from "./types.js";
-export type { BrowserHandles } from "./browser/index.js";
+export type { BrowserHandles } from "./cdp/browser.js";
 export type {
   TraceConfig,
   TraceData,

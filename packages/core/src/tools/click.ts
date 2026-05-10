@@ -1,9 +1,8 @@
 import { z } from "zod";
-import type { PageManager } from "../browser/page.js";
+import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
-import { resolveLocator } from "./_helpers.js";
 
-export function createClickTool(pageManager: PageManager): Tool {
+export function createClickTool(pageManager: CDPPageManager): Tool {
   return {
     name: "click",
     description:
@@ -13,14 +12,46 @@ export function createClickTool(pageManager: PageManager): Tool {
       text: z.string().optional().describe("Visible text of the element"),
     }),
     execute: async ({ selector, text }) => {
-      const page = await pageManager.getCurrent();
-      const locator = resolveLocator(
-        page,
+      const expression = buildClickExpression(
         selector as string | undefined,
         text as string | undefined
       );
-      await locator.first().click();
+      const result = (await pageManager.evaluate(expression)) as {
+        ok: boolean;
+        error?: string;
+      };
+      if (!result?.ok) {
+        throw new Error(result?.error ?? "Click failed");
+      }
       return { ok: true };
     },
   };
+}
+
+function buildClickExpression(
+  selector: string | undefined,
+  text: string | undefined
+): string {
+  if (selector) {
+    return `
+      (() => {
+        const el = document.querySelector('${selector.replace(/'/g, "\\'")}');
+        if (!el) return { ok: false, error: 'Element not found: ${selector.replace(/'/g, "\\'")}' };
+        el.click();
+        return { ok: true };
+      })()
+    `;
+  }
+  if (text) {
+    return `
+      (() => {
+        const els = Array.from(document.querySelectorAll('*'));
+        const el = els.find(e => e.textContent?.includes('${text.replace(/'/g, "\\'")}'));
+        if (!el) return { ok: false, error: 'Element not found by text: ${text.replace(/'/g, "\\'")}' };
+        el.click();
+        return { ok: true };
+      })()
+    `;
+  }
+  return `(() => ({ ok: false, error: 'No selector or text provided' }))()`;
 }

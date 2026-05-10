@@ -1,18 +1,9 @@
 import type { TraceData } from "../logger/types.js";
-import type { MemorizedPath, PathStep, SemanticHint } from "./types.js";
+import type { MemorizedPath, PathStep } from "./types.js";
 import { fingerprint } from "./types.js";
 
 export const EXPLORATORY_TOOLS = ["getSnapshot", "screenshot", "getText"];
-export const EXECUTION_TOOLS = [
-  "navigate",
-  "click",
-  "fill",
-  "press",
-  "hover",
-  "select",
-  "scroll",
-  "tabs",
-];
+export const EXECUTION_TOOLS = ["navigate", "click", "fill", "waitFor", "tabs"];
 
 export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
   // Rule 1: last step must have successful submitDone
@@ -34,8 +25,7 @@ export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
         steps.push({
           tool: tc.toolName,
           args,
-          selectorFallbacks: extractSelectorFallbacks(args),
-          semanticHint: extractSemanticHint(tc.toolName, args),
+          locator: extractLocator(args),
         });
       }
     }
@@ -49,52 +39,37 @@ export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
   };
 }
 
-function extractSelectorFallbacks(args: Record<string, unknown>): string[] {
-  const selector = args.selector as string | undefined;
-  if (!selector) return [];
+function extractLocator(args: Record<string, unknown>): PathStep["locator"] {
+  const locator: PathStep["locator"] = {};
 
-  const fallbacks: string[] = [];
-
-  // #id → [id="id"]
-  const idMatch = selector.match(/^#([\w-]+)$/);
-  if (idMatch) {
-    fallbacks.push(`[id="${idMatch[1]}"]`);
-  }
-
-  return fallbacks;
-}
-
-function extractSemanticHint(
-  tool: string,
-  args: Record<string, unknown>
-): SemanticHint | undefined {
-  const hint: SemanticHint = {};
-
-  const selector = args.selector as string | undefined;
   const text = args.text as string | undefined;
-
   if (text) {
-    hint.nearText = text;
+    locator.textAnchor = { labelText: text };
   }
 
+  const selector = args.selector as string | undefined;
   if (selector) {
+    // Try to extract semantic hints from selector
     const ariaMatch = selector.match(/\[aria-label=["']?([^"'\]]+)["']?\]/i);
-    if (ariaMatch) hint.ariaLabel = ariaMatch[1];
+    if (ariaMatch) {
+      locator.semantic = { ...locator.semantic, ariaLabel: ariaMatch[1] };
+    }
 
     const placeholderMatch = selector.match(
       /\[placeholder=["']?([^"'\]]+)["']?\]/i
     );
-    if (placeholderMatch) hint.placeholder = placeholderMatch[1];
+    if (placeholderMatch) {
+      locator.semantic = {
+        ...locator.semantic,
+        placeholder: placeholderMatch[1],
+      };
+    }
 
-    const typeMatch = selector.match(
-      /\[?type=["']?(password|email|text|search)["']?\]?/i
-    );
-    if (typeMatch) hint.inputType = typeMatch[1];
+    // Fallback to xpath if selector is complex
+    if (!locator.textAnchor && !locator.semantic) {
+      locator.xpath = selector;
+    }
   }
 
-  if (tool === "fill") hint.tagName = "input";
-  if (tool === "select") hint.tagName = "select";
-  if (tool === "click") hint.tagName = "button";
-
-  return Object.keys(hint).length > 0 ? hint : undefined;
+  return Object.keys(locator).length > 0 ? locator : undefined;
 }

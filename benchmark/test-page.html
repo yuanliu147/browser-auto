@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Benchmark Page with Iframes</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    iframe { border: 2px solid #333; margin: 10px; width: 400px; height: 300px; }
+    .container { display: flex; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h1>Main Page</h1>
+  <div class="container">
+    <iframe id="frame-a" src="data:text/html,
+      <!DOCTYPE html>
+      <html><head><style>body{padding:10px} .item{padding:5px;margin:3px;background:#f0f0f0}</style></head>
+      <body>
+        <h2>Frame A (Same Origin)</h2>
+        <div id='list-a'></div>
+        <script>
+          let html = '';
+          for(let i=0;i<50;i++){
+            html += '<div class=\"item\" id=\"a-item-'+i+'\" data-index=\"'+i+'\">Item A-'+i+'</div>';
+          }
+          document.getElementById('list-a').innerHTML = html;
+        </script>
+      </body></html>
+    "></iframe>
+
+    <iframe id="frame-b" src="data:text/html,
+      <!DOCTYPE html>
+      <html><head><style>body{padding:10px} .item{padding:5px;margin:3px;background:#e0f0ff}</style></head>
+      <body>
+        <h2>Frame B (Same Origin)</h2>
+        <div id='list-b'></div>
+        <iframe id='frame-b-inner' src='data:text/html,
+          <!DOCTYPE html>
+          <html><head><style>body{padding:10px} .item{padding:5px;margin:3px;background:#ffe0e0}</style></head>
+          <body>
+            <h3>Inner Frame (Nested)</h3>
+            <div id=\"list-b-inner\"></div>
+            <script>
+              let html = \"\";
+              for(let i=0;i<30;i++){
+                html += \"<div class='item' id='b-inner-item-\"+i+\"' data-index='\"+i+\"'>Inner Item B-\"+i+\"</div>\";
+              }
+              document.getElementById(\"list-b-inner\").innerHTML = html;
+            </script>
+          </body></html>
+        '></iframe>
+        <script>
+          let html = '';
+          for(let i=0;i<50;i++){
+            html += '<div class=\"item\" id=\"b-item-'+i+'\" data-index=\"'+i+'\">Item B-'+i+'</div>';
+          }
+          document.getElementById('list-b').innerHTML = html;
+        </script>
+      </body></html>
+    "></iframe>
+
+    <iframe id="frame-c" src="about:blank"></iframe>
+  </div>
+  <script>
+    // Populate frame-c dynamically (cross-origin simulation via blob)
+    const c = document.getElementById('frame-c');
+    const blob = new Blob([`
+      <!DOCTYPE html>
+      <html><head><style>body{padding:10px} .item{padding:5px;margin:3px;background:#e0ffe0}</style></head>
+      <body>
+        <h2>Frame C (Blob URL - Cross Origin Context)</h2>
+        <div id='list-c'></div>
+        <script>
+          let html = '';
+          for(let i=0;i<50;i++){
+            html += '<div class=\"item\" id=\"c-item-'+i+'\" data-index=\"'+i+'\">Item C-'+i+'</div>';
+          }
+          document.getElementById('list-c').innerHTML = html;
+        <\/script>
+      </body></html>
+    `], { type: 'text/html' });
+    c.src = URL.createObjectURL(blob);
+  </script>
+</body>
+</html>

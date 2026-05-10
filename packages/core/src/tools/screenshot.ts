@@ -1,17 +1,16 @@
 import { z } from "zod";
-import type { PageManager } from "../browser/page.js";
+import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
 
-export function createScreenshotTool(pageManager: PageManager): Tool {
+export function createScreenshotTool(pageManager: CDPPageManager): Tool {
   return {
     name: "screenshot",
     description:
       "Take a screenshot of the current page. Returns base64-encoded PNG.",
     parameters: z.object({}),
     execute: async () => {
-      const page = await pageManager.getCurrent();
-      const buf = await page.screenshot();
-      return { base64: buf.toString("base64") };
+      const data = await pageManager.screenshot();
+      return { base64: data };
     },
   };
 }

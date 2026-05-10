@@ -1,15 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Page } from "playwright";
+import type { CDPPageManager } from "../cdp/page.js";
 import type { TraceData, TraceScreenshotInfo } from "./types.js";
 
-export const INTERACTION_TOOLS = new Set([
-  "click",
-  "fill",
-  "press",
-  "hover",
-  "select",
-]);
+export const INTERACTION_TOOLS = new Set(["click", "fill"]);
 
 export function isInteractionTool(toolName: string): boolean {
   return INTERACTION_TOOLS.has(toolName);
@@ -45,12 +39,13 @@ export async function createTraceDir(
 }
 
 export async function takeScreenshot(
-  page: Page,
+  pageManager: CDPPageManager,
   dir: string,
   filename: string
 ): Promise<TraceScreenshotInfo> {
   try {
-    const buf = await page.screenshot();
+    const data = await pageManager.screenshot();
+    const buf = Buffer.from(data, "base64");
     const filepath = join(dir, "screenshots", filename);
     await writeFile(filepath, buf);
     return { path: `screenshots/${filename}` };

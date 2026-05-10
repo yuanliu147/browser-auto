@@ -1,12 +1,9 @@
-import type { Browser, BrowserContext } from "playwright";
 import type { TraceConfig } from "./logger/types.js";
 
 export interface BrowserConfig {
   headless?: boolean;
   channel?: string;
   args?: string[];
-  browser?: Browser;
-  context?: BrowserContext;
 }
 
 export interface LLMConfig {

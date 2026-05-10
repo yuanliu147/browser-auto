@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import type { PageManager } from "../browser/page.js";
+import type { CDPPageManager } from "../cdp/page.js";
 import type {
   TraceConfig,
   TraceData,
@@ -15,7 +15,7 @@ import {
 } from "./utils.js";
 
 export class TraceRecorder {
-  private pageManager: PageManager;
+  private pageManager: CDPPageManager;
   private outputDir: string;
   private dir: string;
   private seq: number;
@@ -33,7 +33,7 @@ export class TraceRecorder {
   private success: boolean = true;
 
   constructor(
-    pageManager: PageManager,
+    pageManager: CDPPageManager,
     config: TraceConfig,
     seq: number,
     instruction: string
@@ -64,9 +64,8 @@ export class TraceRecorder {
     };
 
     if (isInteractionTool(toolName)) {
-      const page = await this.pageManager.getCurrent();
       const screenshot = await takeScreenshot(
-        page,
+        this.pageManager,
         this.dir,
         `call-${callId}-before.png`
       );
@@ -97,9 +96,8 @@ export class TraceRecorder {
 
     if (isInteractionTool(toolCall.toolName)) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const page = await this.pageManager.getCurrent();
       const screenshot = await takeScreenshot(
-        page,
+        this.pageManager,
         this.dir,
         `call-${callId}-after.png`
       );
