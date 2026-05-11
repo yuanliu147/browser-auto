@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <title>登录页</title>
+    <style>
+      body {
+        font-family: system-ui;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+      }
+      .form-item {
+        margin: 16px 0;
+      }
+      label {
+        display: inline-block;
+        width: 100px;
+        font-weight: 500;
+      }
+      input,
+      select,
+      textarea {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 240px;
+      }
+      .ant-btn {
+        padding: 6px 16px;
+        border-radius: 4px;
+        border: 1px solid #d9d9d9;
+        background: white;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      .ant-btn-primary {
+        background: #1890ff;
+        color: white;
+        border-color: #1890ff;
+      }
+      .ant-btn-primary:disabled {
+        background: #bae7ff;
+        border-color: #bae7ff;
+        cursor: not-allowed;
+      }
+      #error {
+        margin-top: 12px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        display: none;
+        background: #fff2f0;
+        border: 1px solid #ffccc7;
+        color: #cf1322;
+        width: 340px;
+      }
+      #loading {
+        margin-top: 12px;
+        display: none;
+        color: #666;
+      }
+      #loginPanel {
+        border: 1px solid #eee;
+        padding: 24px;
+        border-radius: 8px;
+        width: 400px;
+      }
+      #mainForm {
+        display: none;
+        border: 1px solid #eee;
+        padding: 24px;
+        border-radius: 8px;
+        margin-top: 20px;
+      }
+      #mainForm h2 {
+        margin-top: 0;
+      }
+      .result {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 4px;
+        display: none;
+        background: #f6ffed;
+        border: 1px solid #b7eb8f;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loginPanel">
+      <h1>登录</h1>
+      <div class="form-item">
+        <label for="account">账号</label>
+        <input
+          id="account"
+          placeholder="请输入账号"
+          autocomplete="username"
+        />
+      </div>
+      <div class="form-item">
+        <label for="password">密码</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="请输入密码"
+          autocomplete="current-password"
+        />
+      </div>
+      <div class="form-item">
+        <label></label>
+        <button
+          id="loginBtn"
+          type="button"
+          class="ant-btn ant-btn-primary"
+          onclick="handleLogin()"
+        >
+          登录
+        </button>
+      </div>
+      <div id="loading">正在登录...</div>
+      <div id="error"></div>
+    </div>
+
+    <div id="mainForm">
+      <h2>信息填写</h2>
+      <form id="infoForm">
+        <div class="form-item">
+          <label for="name">姓名</label>
+          <input id="name" placeholder="请输入姓名" />
+        </div>
+        <div class="form-item">
+          <label for="email">邮箱</label>
+          <input id="email" type="email" placeholder="请输入邮箱" />
+        </div>
+        <div class="form-item">
+          <label for="department">部门</label>
+          <select id="department">
+            <option value="">请选择</option>
+            <option value="tech">技术部</option>
+            <option value="product">产品部</option>
+            <option value="ops">运营部</option>
+            <option value="hr">人力资源</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label for="level">级别</label>
+          <select id="level">
+            <option value="">请选择</option>
+            <option value="junior">初级</option>
+            <option value="mid">中级</option>
+            <option value="senior">高级</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label for="remark">备注</label>
+          <textarea
+            id="remark"
+            rows="3"
+            placeholder="请输入备注"
+            style="width: 240px"
+          ></textarea>
+        </div>
+        <div class="form-item">
+          <label></label>
+          <button
+            type="button"
+            class="ant-btn ant-btn-primary"
+            onclick="handleSubmit()"
+          >
+            提交
+          </button>
+        </div>
+      </form>
+      <div id="formResult" class="result"></div>
+    </div>
+
+    <script>
+      async function handleLogin() {
+        const account = document.getElementById("account").value.trim();
+        const password = document.getElementById("password").value;
+        const error = document.getElementById("error");
+        const loading = document.getElementById("loading");
+        const loginBtn = document.getElementById("loginBtn");
+
+        error.style.display = "none";
+
+        if (!account || !password) {
+          error.textContent = "请输入账号和密码";
+          error.style.display = "block";
+          return;
+        }
+
+        loginBtn.disabled = true;
+        loading.style.display = "block";
+
+        // 模拟网络延迟
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        loading.style.display = "none";
+        loginBtn.disabled = false;
+
+        if (account !== "test" || password !== "qw1234") {
+          error.textContent = "账号或密码错误";
+          error.style.display = "block";
+          return;
+        }
+
+        document.getElementById("loginPanel").style.display = "none";
+        document.getElementById("mainForm").style.display = "block";
+      }
+
+      function handleSubmit() {
+        const name = document.getElementById("name").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const department = document.getElementById("department").value;
+        const level = document.getElementById("level").value;
+        const result = document.getElementById("formResult");
+
+        if (!name || !email || !department || !level) {
+          result.style.display = "block";
+          result.style.background = "#fff2f0";
+          result.style.border = "1px solid #ffccc7";
+          result.textContent = "请填写完整信息";
+          return;
+        }
+
+        result.style.display = "block";
+        result.style.background = "#f6ffed";
+        result.style.border = "1px solid #b7eb8f";
+        result.textContent =
+          "提交成功：" + name + " | " + department + " | " + level;
+      }
+    </script>
+  </body>
+</html>

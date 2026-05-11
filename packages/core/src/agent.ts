@@ -10,13 +10,15 @@ import { TraceRecorder } from "./logger/index.js";
 import type { ActOptions, AgentOptions } from "./types.js";
 import type { TraceConfig, TraceData } from "./logger/types.js";
 import { AgentLoop } from "./loop/loop.js";
-import type { Message } from "./loop/types.js";
+import type { Message, Tool, ToolContext } from "./loop/types.js";
 import { InMemoryPathMemory, ExactMemoryKey } from "./memory/types.js";
 import { extractMinimalPath } from "./memory/extractor.js";
 import { replayPath } from "./memory/replayer.js";
 import type { MemorizedPath } from "./memory/types.js";
 import { ACT_SYSTEM_PROMPT } from "./prompts/system.js";
 import { buildHandoverMessages } from "./prompts/handover.js";
+import { getAXTree } from "./snapshot/axtree.js";
+import { serializeSnapshot } from "./snapshot/serializer.js";
 
 function applyVariables(
   instruction: string,
@@ -111,18 +113,11 @@ export class BrowserAgent {
 
   private async runLoop(
     prompt: string,
-    tools: Record<
-      string,
-      {
-        name: string;
-        description: string;
-        parameters: unknown;
-        execute: (args: Record<string, unknown>) => Promise<unknown>;
-      }
-    >,
+    tools: Record<string, Tool>,
     maxSteps: number,
     options?: {
       initialMessages?: Message[];
+      initialRefMap?: Map<string, import("./memory/types.js").ElementLocator>;
     }
   ): Promise<{ success: boolean; traceData?: TraceData }> {
     let recorder: TraceRecorder | undefined;
@@ -138,9 +133,14 @@ export class BrowserAgent {
     }
 
     const loop = new AgentLoop(this.loop.model, maxSteps);
+    const context: ToolContext = {
+      pageManager: this.pageManager,
+      refMap: options?.initialRefMap,
+    };
 
     try {
       const result = await loop.run(prompt, tools, ACT_SYSTEM_PROMPT, {
+        context,
         initialMessages: options?.initialMessages,
         onToolCallStart: async (e) => {
           if (recorder) {
@@ -160,6 +160,13 @@ export class BrowserAgent {
               e.error,
               e.durationMs
             );
+            if (
+              e.toolCall.name === "getSnapshot" &&
+              e.success &&
+              context.refMap
+            ) {
+              recorder.onRefMap(context.refMap as Map<string, unknown>);
+            }
           }
         },
         onStepFinish: (e) => {
@@ -193,15 +200,7 @@ export class BrowserAgent {
 
   private async runWithHandover(
     prompt: string,
-    tools: Record<
-      string,
-      {
-        name: string;
-        description: string;
-        parameters: unknown;
-        execute: (args: Record<string, unknown>) => Promise<unknown>;
-      }
-    >,
+    tools: Record<string, Tool>,
     maxSteps: number,
     memorizedPath: MemorizedPath,
     completedStepIndices: number[],
@@ -212,11 +211,14 @@ export class BrowserAgent {
     const failedStep = remainingSteps[0];
 
     let snapshot = "";
+    let refMap:
+      | Map<string, import("./memory/types.js").ElementLocator>
+      | undefined;
     try {
-      const result = await this.pageManager.evaluate(`
-        document.body?.innerText?.slice(0, 2000) || 'Unable to get page text'
-      `);
-      snapshot = String(result ?? "");
+      const tree = await getAXTree(this.pageManager);
+      const output = serializeSnapshot(tree);
+      snapshot = output.text;
+      refMap = output.refMap;
     } catch {
       snapshot = "Unable to get page snapshot";
     }
@@ -235,7 +237,10 @@ export class BrowserAgent {
       snapshot
     );
 
-    await this.runLoop(prompt, tools, maxSteps, { initialMessages });
+    await this.runLoop(prompt, tools, maxSteps, {
+      initialMessages,
+      initialRefMap: refMap,
+    });
   }
 
   async close(): Promise<void> {

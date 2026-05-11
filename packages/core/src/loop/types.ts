@@ -1,8 +1,19 @@
+import type { CDPPageManager } from "../cdp/page.js";
+import type { ElementLocator } from "../memory/types.js";
+
+export interface ToolContext {
+  pageManager?: CDPPageManager;
+  refMap?: Map<string, ElementLocator>;
+}
+
 export interface Tool {
   name: string;
   description: string;
   parameters: unknown; // z.ZodTypeAny
-  execute: (args: Record<string, unknown>) => Promise<unknown>;
+  execute: (
+    args: Record<string, unknown>,
+    context: ToolContext
+  ) => Promise<unknown>;
 }
 
 export interface ToolCall {

@@ -1,5 +1,5 @@
 import type { TraceData } from "../logger/types.js";
-import type { MemorizedPath, PathStep } from "./types.js";
+import type { ElementLocator, MemorizedPath, PathStep } from "./types.js";
 import { fingerprint } from "./types.js";
 
 export const EXPLORATORY_TOOLS = ["getSnapshot", "screenshot", "getText"];
@@ -15,7 +15,16 @@ export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
 
   // Rule 2: extract successful execution steps, skip failed and exploratory ones
   const steps: PathStep[] = [];
+  let currentRefMap: Map<string, ElementLocator> | undefined;
   for (const step of trace.steps) {
+    // Update refMap from snapshot steps
+    if (step.refMap) {
+      currentRefMap = new Map();
+      for (const [k, v] of Object.entries(step.refMap)) {
+        currentRefMap.set(k, v as ElementLocator);
+      }
+    }
+
     for (const tc of step.toolCalls) {
       if (!tc.success) continue;
       if (EXPLORATORY_TOOLS.includes(tc.toolName)) continue;
@@ -25,7 +34,7 @@ export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
         steps.push({
           tool: tc.toolName,
           args,
-          locator: extractLocator(args),
+          locator: extractLocator(args, currentRefMap),
         });
       }
     }
@@ -39,14 +48,23 @@ export function extractMinimalPath(trace: TraceData): MemorizedPath | null {
   };
 }
 
-function extractLocator(args: Record<string, unknown>): PathStep["locator"] {
+function extractLocator(
+  args: Record<string, unknown>,
+  refMap?: Map<string, ElementLocator>
+): PathStep["locator"] {
   const locator: PathStep["locator"] = {};
 
-  const text = args.text as string | undefined;
-  if (text) {
-    locator.textAnchor = { labelText: text };
+  // 1. Try ref (preferred)
+  const ref = args.ref as string | undefined;
+  if (ref) {
+    const key = ref.startsWith("@") ? ref.slice(1) : ref;
+    const refLocator = refMap?.get(key);
+    if (refLocator) {
+      return refLocator;
+    }
   }
 
+  // 2. Try selector
   const selector = args.selector as string | undefined;
   if (selector) {
     // Try to extract semantic hints from selector
@@ -66,7 +84,7 @@ function extractLocator(args: Record<string, unknown>): PathStep["locator"] {
     }
 
     // Fallback to xpath if selector is complex
-    if (!locator.textAnchor && !locator.semantic) {
+    if (!locator.semantic) {
       locator.xpath = selector;
     }
   }

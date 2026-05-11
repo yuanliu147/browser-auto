@@ -23,6 +23,7 @@ export interface TraceStep {
   reasoningText?: string;
   text?: string;
   toolCalls: TraceToolCall[];
+  refMap?: Record<string, unknown>;
 }
 
 export interface TraceSummary {

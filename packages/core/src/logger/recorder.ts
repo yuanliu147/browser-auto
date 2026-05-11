@@ -31,6 +31,7 @@ export class TraceRecorder {
   };
   private finishReason: string = "";
   private success: boolean = true;
+  private currentRefMap?: Map<string, unknown>;
 
   constructor(
     pageManager: CDPPageManager,
@@ -105,6 +106,10 @@ export class TraceRecorder {
     }
   }
 
+  onRefMap(refMap: Map<string, unknown>): void {
+    this.currentRefMap = refMap;
+  }
+
   onStepFinish(
     stepNumber: number,
     reasoningText: string | undefined,
@@ -122,6 +127,14 @@ export class TraceRecorder {
       if (recorded) {
         step.toolCalls.push(recorded);
       }
+    }
+
+    if (this.currentRefMap) {
+      const refMapObj: Record<string, unknown> = {};
+      for (const [k, v] of this.currentRefMap) {
+        refMapObj[k] = v;
+      }
+      step.refMap = refMapObj;
     }
 
     this.steps.push(step);

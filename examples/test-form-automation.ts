@@ -36,7 +36,7 @@ async function main() {
   const url = pathToFileURL(file).href;
 
   const agent = await createBrowserAgent({
-    browser: { headless: false },
+    // browser: { headless: false },
     trace: { outputDir: "./traces" },
   });
 

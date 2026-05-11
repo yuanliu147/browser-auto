@@ -15,9 +15,12 @@ export function createGetSnapshotTool(pageManager: CDPPageManager): Tool {
         .optional()
         .describe("Optional CSS selector to limit snapshot scope"),
     }),
-    execute: async () => {
+    execute: async (_args, context) => {
       const tree = await getAXTree(pageManager);
       const output = serializeSnapshot(tree);
+      if (context) {
+        context.refMap = output.refMap;
+      }
       return { snapshot: output.text };
     },
   };

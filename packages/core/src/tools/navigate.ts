@@ -9,8 +9,12 @@ export function createNavigateTool(pageManager: CDPPageManager): Tool {
     parameters: z.object({
       url: z.string().describe("The URL to navigate to"),
     }),
-    execute: async ({ url }) => {
+    execute: async ({ url }, context) => {
       await pageManager.navigate(url as string);
+      // 页面跳转后，旧的 refMap 失效，需要清除
+      if (context) {
+        context.refMap = undefined;
+      }
       const { frameTree } = (await pageManager.send("Page.getFrameTree")) as {
         frameTree: { frame: { url: string } };
       };

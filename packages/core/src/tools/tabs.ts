@@ -12,7 +12,7 @@ export function createTabsTool(pageManager: CDPPageManager): Tool {
       url: z.string().optional().describe("URL to open (for action=new)"),
       index: z.number().optional().describe("Tab index (for action=switch)"),
     }),
-    execute: async ({ action, url, index }) => {
+    execute: async ({ action, url, index }, _context) => {
       if (action === "list") {
         const { targetInfos } = (await pageManager.send(
           "Target.getTargets"

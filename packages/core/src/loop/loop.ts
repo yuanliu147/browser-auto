@@ -10,6 +10,7 @@ import type {
   ToolResult,
   StepFinishEvent,
   LoopFinishEvent,
+  ToolContext,
 } from "./types.js";
 
 export class AgentLoop {
@@ -27,6 +28,7 @@ export class AgentLoop {
     systemPrompt: string,
     options?: {
       initialMessages?: Message[];
+      context?: ToolContext;
       onToolCallStart?: (e: ToolCallStartEvent) => void | Promise<void>;
       onToolCallFinish?: (e: ToolCallFinishEvent) => void | Promise<void>;
       onStepFinish?: (e: StepFinishEvent) => void;
@@ -83,7 +85,7 @@ export class AgentLoop {
           result = { error };
         } else {
           try {
-            result = await tool.execute(tc.arguments);
+            result = await tool.execute(tc.arguments, options?.context ?? {});
           } catch (e) {
             success = false;
             error = e instanceof Error ? e.message : String(e);

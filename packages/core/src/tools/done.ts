@@ -12,7 +12,7 @@ export function createSubmitDoneTool(): Tool {
         .optional()
         .describe("Optional result data for the caller"),
     }),
-    execute: async ({ result }) => {
+    execute: async ({ result }, _context) => {
       return { done: true, result };
     },
   };

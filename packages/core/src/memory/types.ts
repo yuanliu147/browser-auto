@@ -1,3 +1,5 @@
+import type { ElementLocator } from "../locator/types.js";
+
 export interface MemoryKey {
   equals(other: MemoryKey): boolean;
   hash(): string;
@@ -21,12 +23,7 @@ export class ExactMemoryKey implements MemoryKey {
   }
 }
 
-export interface ElementLocator {
-  textAnchor?: { labelText: string; relation?: string };
-  semantic?: { ariaLabel?: string; placeholder?: string; name?: string };
-  structural?: { tagName: string; formIndex?: number; indexInForm?: number };
-  xpath?: string;
-}
+export { ElementLocator };
 
 export interface ContextStep {
   type: "frame" | "shadow" | "modal";

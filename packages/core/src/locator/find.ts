@@ -11,25 +11,31 @@ export async function locateElement(
     if (el) return el;
   }
 
-  // 2. Try aria-label
+  // 2. Try visible text (for buttons/links without labels)
+  if (locator.semantic?.name) {
+    const el = await findByTextContent(page, locator.semantic.name);
+    if (el) return el;
+  }
+
+  // 3. Try aria-label
   if (locator.semantic?.ariaLabel) {
     const el = await findByAriaLabel(page, locator.semantic.ariaLabel);
     if (el) return el;
   }
 
-  // 3. Try placeholder
+  // 4. Try placeholder
   if (locator.semantic?.placeholder) {
     const el = await findByPlaceholder(page, locator.semantic.placeholder);
     if (el) return el;
   }
 
-  // 4. Try structural
+  // 5. Try structural
   if (locator.structural) {
     const el = await findByStructure(page, locator.structural);
     if (el) return el;
   }
 
-  // 5. Try xpath
+  // 6. Try xpath
   if (locator.xpath) {
     const el = await findByXPath(page, locator.xpath);
     if (el) return el;
@@ -42,22 +48,27 @@ async function findByLabelText(
   page: CDPPageManager,
   label: string
 ): Promise<LocatedElement | null> {
+  const expression = `
+    (() => {
+      const labels = Array.from(document.querySelectorAll('label'));
+      const labelEl = labels.find(l => {
+        const text = (l.textContent || '').trim();
+        return text.startsWith(${JSON.stringify(label.trim())}) || text.includes(${JSON.stringify(label.trim())});
+      });
+      if (!labelEl) return null;
+      let target = labelEl.htmlFor ? document.getElementById(labelEl.htmlFor) : null;
+      if (!target) {
+        target = labelEl.querySelector('input, select, textarea, button');
+      }
+      if (!target) {
+        target = labelEl.nextElementSibling;
+      }
+      return target ? { tagName: target.tagName, id: target.id, className: target.className } : null;
+    })()
+  `;
+
   const result = (await page.send("Runtime.evaluate", {
-    expression: `
-      (() => {
-        const labels = Array.from(document.querySelectorAll('label'));
-        const labelEl = labels.find(l => l.textContent?.includes('${label.replace(/'/g, "\\'")}'));
-        if (!labelEl) return null;
-        let target = labelEl.htmlFor ? document.getElementById(labelEl.htmlFor) : null;
-        if (!target) {
-          target = labelEl.nextElementSibling;
-        }
-        if (!target) {
-          target = labelEl.querySelector('input, select, textarea');
-        }
-        return target ? { tagName: target.tagName, id: target.id, className: target.className } : null;
-      })()
-    `,
+    expression,
     returnByValue: true,
   })) as {
     result?: {
@@ -81,18 +92,61 @@ async function findByLabelText(
   }
 }
 
+async function findByTextContent(
+  page: CDPPageManager,
+  text: string
+): Promise<LocatedElement | null> {
+  const expression = `
+    (() => {
+      const candidates = document.querySelectorAll('button, a, [role="button"]');
+      for (const el of candidates) {
+        if ((el.textContent || '').trim() === ${JSON.stringify(text.trim())}) {
+          return { tagName: el.tagName, id: el.id, className: el.className };
+        }
+      }
+      return null;
+    })()
+  `;
+
+  const result = (await page.send("Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+  })) as {
+    result?: {
+      value?: { tagName: string; id: string; className: string } | null;
+    };
+  };
+
+  const val = result.result?.value;
+  if (!val) return null;
+
+  try {
+    const selector = val.id
+      ? `#${val.id}`
+      : val.className
+        ? `.${val.className.split(" ")[0]}`
+        : val.tagName.toLowerCase();
+    return await queryBackendNodeId(page, selector);
+  } catch {
+    return null;
+  }
+}
+
 async function findByAriaLabel(
   page: CDPPageManager,
   label: string
 ): Promise<LocatedElement | null> {
-  return queryBackendNodeId(page, `[aria-label="${label}"]`);
+  return queryBackendNodeId(page, `[aria-label=${JSON.stringify(label)}]`);
 }
 
 async function findByPlaceholder(
   page: CDPPageManager,
   placeholder: string
 ): Promise<LocatedElement | null> {
-  return queryBackendNodeId(page, `[placeholder="${placeholder}"]`);
+  return queryBackendNodeId(
+    page,
+    `[placeholder=${JSON.stringify(placeholder)}]`
+  );
 }
 
 async function findByStructure(
@@ -103,7 +157,7 @@ async function findByStructure(
     (() => {
       const forms = document.querySelectorAll('form');
       const form = forms[${structural.formIndex ?? 0}] || document.body;
-      const els = form.querySelectorAll('${structural.tagName}');
+      const els = form.querySelectorAll(${JSON.stringify(structural.tagName)});
       const el = els[${structural.indexInForm ?? 0}];
       return el ? { tagName: el.tagName, id: el.id, className: el.className } : null;
     })()
@@ -133,14 +187,16 @@ async function findByXPath(
   page: CDPPageManager,
   xpath: string
 ): Promise<LocatedElement | null> {
+  const expression = `
+    (() => {
+      const result = document.evaluate(${JSON.stringify(xpath)}, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      const el = result.singleNodeValue;
+      return el ? { tagName: el.tagName, id: el.id, className: el.className } : null;
+    })()
+  `;
+
   const result = (await page.send("Runtime.evaluate", {
-    expression: `
-      (() => {
-        const result = document.evaluate('${xpath.replace(/'/g, "\\'")}', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        const el = result.singleNodeValue;
-        return el ? { tagName: el.tagName, id: el.id, className: el.className } : null;
-      })()
-    `,
+    expression,
     returnByValue: true,
   })) as {
     result?: {

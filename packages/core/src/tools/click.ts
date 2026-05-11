@@ -1,57 +1,61 @@
 import { z } from "zod";
 import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
+import { locateElement } from "../locator/find.js";
+import {
+  clickByBackendNodeId,
+  findBackendNodeIdBySelector,
+} from "../interaction/index.js";
 
 export function createClickTool(pageManager: CDPPageManager): Tool {
   return {
     name: "click",
     description:
-      "Click an element. Provide either selector (CSS) or text (visible text of the element).",
+      "Click an interactive element. Provide either ref (preferred, from snapshot) or selector (CSS).",
     parameters: z.object({
+      ref: z
+        .string()
+        .optional()
+        .describe("Element ref ID from snapshot, e.g. @e1"),
       selector: z.string().optional().describe("CSS selector"),
-      text: z.string().optional().describe("Visible text of the element"),
     }),
-    execute: async ({ selector, text }) => {
-      const expression = buildClickExpression(
-        selector as string | undefined,
-        text as string | undefined
+    execute: async ({ ref, selector }, context) => {
+      const backendNodeId = await resolveTarget(
+        pageManager,
+        context.refMap,
+        ref as string | undefined,
+        selector as string | undefined
       );
-      const result = (await pageManager.evaluate(expression)) as {
-        ok: boolean;
-        error?: string;
-      };
-      if (!result?.ok) {
-        throw new Error(result?.error ?? "Click failed");
+      if (!backendNodeId) {
+        throw new Error(
+          `Element not found: ref=${ref ?? "none"}, selector=${selector ?? "none"}`
+        );
       }
+      await clickByBackendNodeId(pageManager, backendNodeId);
       return { ok: true };
     },
   };
 }
 
-function buildClickExpression(
-  selector: string | undefined,
-  text: string | undefined
-): string {
+async function resolveTarget(
+  pageManager: CDPPageManager,
+  refMap: Map<string, import("../locator/types.js").ElementLocator> | undefined,
+  ref: string | undefined,
+  selector: string | undefined
+): Promise<number | null> {
+  if (ref) {
+    const key = ref.startsWith("@") ? ref.slice(1) : ref;
+    const locator = refMap?.get(key);
+    if (!locator) {
+      throw new Error(
+        `Ref "${ref}" not found in snapshot. Call getSnapshot first.`
+      );
+    }
+    const located = await locateElement(pageManager, locator);
+    return located.backendNodeId;
+  }
   if (selector) {
-    return `
-      (() => {
-        const el = document.querySelector('${selector.replace(/'/g, "\\'")}');
-        if (!el) return { ok: false, error: 'Element not found: ${selector.replace(/'/g, "\\'")}' };
-        el.click();
-        return { ok: true };
-      })()
-    `;
+    return findBackendNodeIdBySelector(pageManager, selector);
   }
-  if (text) {
-    return `
-      (() => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const el = els.find(e => e.textContent?.includes('${text.replace(/'/g, "\\'")}'));
-        if (!el) return { ok: false, error: 'Element not found by text: ${text.replace(/'/g, "\\'")}' };
-        el.click();
-        return { ok: true };
-      })()
-    `;
-  }
-  return `(() => ({ ok: false, error: 'No selector or text provided' }))()`;
+  return null;
 }

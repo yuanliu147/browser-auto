@@ -4,8 +4,8 @@ import { ACT_SYSTEM_PROMPT } from "./system.js";
 
 function stepToDetailedDescription(step: PathStep): string {
   const selector =
-    (step.args.selector as string | undefined) ??
-    (step.args.text as string | undefined);
+    (step.args.ref as string | undefined) ??
+    (step.args.selector as string | undefined);
   const target = selector ? `（选择器：${selector}）` : "";
 
   switch (step.tool) {

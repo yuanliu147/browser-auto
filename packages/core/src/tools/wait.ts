@@ -15,16 +15,16 @@ export function createWaitForTool(pageManager: CDPPageManager): Tool {
         .optional()
         .describe("Element state to wait for (defaults to visible)"),
     }),
-    execute: async ({ selector, ms }) => {
+    execute: async ({ selector, ms }, _context) => {
       const sel = selector as string | undefined;
       const waitMs = ms as number | undefined;
       if (sel) {
         const start = Date.now();
         const timeout = 10000;
         while (Date.now() - start < timeout) {
-          const result = (await pageManager.evaluate(`
-            !!document.querySelector('${sel.replace(/'/g, "\\'")}')
-          `)) as boolean;
+          const result = (await pageManager.evaluate(
+            `!!document.querySelector(${JSON.stringify(sel)})`
+          )) as boolean;
           if (result) return { ok: true };
           await new Promise((r) => setTimeout(r, 200));
         }
