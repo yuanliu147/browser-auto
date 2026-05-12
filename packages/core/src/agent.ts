@@ -8,7 +8,7 @@ import { createDeepSeekProvider } from "./llm/provider.js";
 import { createBrowserTools } from "./tools/index.js";
 import { TraceRecorder } from "./logger/index.js";
 import type { ActOptions, AgentOptions } from "./types.js";
-import type { TraceConfig, TraceData } from "./logger/types.js";
+import type { TraceConfig, TraceData, TraceSummary } from "./logger/types.js";
 import { AgentLoop } from "./loop/loop.js";
 import type { Message, Tool, ToolContext } from "./loop/types.js";
 import { InMemoryPathMemory, ExactMemoryKey } from "./memory/types.js";
@@ -60,7 +60,10 @@ export class BrowserAgent {
     return new BrowserAgent(handles, pageManager, loop, options.trace);
   }
 
-  async act(instruction: string, opts: ActOptions = {}): Promise<void> {
+  async act(
+    instruction: string,
+    opts: ActOptions = {}
+  ): Promise<TraceSummary | undefined> {
     const prompt = applyVariables(instruction, opts.variables);
     const tools = createBrowserTools(this.pageManager);
     const maxSteps = opts.maxSteps ?? 50;
@@ -70,11 +73,12 @@ export class BrowserAgent {
     const memorizedPath = this.memory.get(memoryKey);
 
     if (memorizedPath) {
+      console.log("----命中缓存----");
       const replayResult = await replayPath(memorizedPath, this.pageManager);
 
       if (replayResult.status === "success") {
         memorizedPath.hitCount++;
-        return;
+        return undefined;
       }
 
       if (
@@ -86,7 +90,7 @@ export class BrowserAgent {
 
       if (replayResult.status === "partial" && replayResult.remainingSteps) {
         // Handover to LLM from breakpoint
-        return await this.runWithHandover(
+        const result = await this.runWithHandover(
           prompt,
           tools,
           maxSteps,
@@ -96,6 +100,7 @@ export class BrowserAgent {
           replayResult.failedAt ?? replayResult.completedSteps?.length ?? 0,
           replayResult.reason
         );
+        return result;
       }
     }
 
@@ -108,7 +113,20 @@ export class BrowserAgent {
       if (path) {
         this.memory.set(memoryKey, path);
       }
+      return {
+        traceId: result.traceData.traceId,
+        instruction: result.traceData.instruction,
+        startedAt: result.traceData.startedAt,
+        endedAt: result.traceData.endedAt,
+        durationMs: result.traceData.durationMs,
+        success: result.traceData.success,
+        finishReason: result.traceData.finishReason,
+        totalUsage: result.traceData.totalUsage,
+        outputDir: result.traceData.outputDir,
+      };
     }
+
+    return undefined;
   }
 
   private async runLoop(
@@ -207,7 +225,7 @@ export class BrowserAgent {
     remainingSteps: Array<{ tool: string; args: Record<string, unknown> }>,
     failedAt: number,
     failedReason?: string
-  ): Promise<void> {
+  ): Promise<TraceSummary | undefined> {
     const failedStep = remainingSteps[0];
 
     let snapshot = "";
@@ -238,10 +256,33 @@ export class BrowserAgent {
       snapshot
     );
 
-    await this.runLoop(prompt, tools, maxSteps, {
+    const result = await this.runLoop(prompt, tools, maxSteps, {
       initialMessages,
       initialRefMap: refMap,
     });
+
+    if (result.traceData) {
+      return {
+        traceId: result.traceData.traceId,
+        instruction: result.traceData.instruction,
+        startedAt: result.traceData.startedAt,
+        endedAt: result.traceData.endedAt,
+        durationMs: result.traceData.durationMs,
+        success: result.traceData.success,
+        finishReason: result.traceData.finishReason,
+        totalUsage: result.traceData.totalUsage,
+        outputDir: result.traceData.outputDir,
+      };
+    }
+    return undefined;
+  }
+
+  async getPageState(): Promise<{ url: string; title: string }> {
+    const [url, title] = await Promise.all([
+      this.pageManager.evaluate("window.location.href"),
+      this.pageManager.evaluate("document.title"),
+    ]);
+    return { url: String(url ?? ""), title: String(title ?? "") };
   }
 
   async close(): Promise<void> {

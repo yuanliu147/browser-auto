@@ -6,7 +6,7 @@
     "prepare": "husky",
     "lint": "eslint packages/*/src",
     "format": "prettier --write .",
-    "example": "tsx examples/test-form-automation.ts"
+    "example": "tsx examples/test-ppro-login.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.3",

@@ -1,5 +1,12 @@
 import type { CDPPageManager } from "../cdp/page.js";
 import type { PathStep, MemorizedPath } from "./types.js";
+import { locateElement } from "../locator/find.js";
+import type { ElementLocator } from "../locator/types.js";
+import {
+  clickByBackendNodeId,
+  fillByBackendNodeId,
+  findBackendNodeIdBySelector,
+} from "../interaction/index.js";
 
 export type ReplayStatus = "success" | "partial" | "failed";
 
@@ -18,9 +25,29 @@ export interface ExecuteResult {
   error?: string;
 }
 
+async function resolveReplayTarget(
+  page: CDPPageManager,
+  locator: ElementLocator | undefined,
+  selector: string | undefined
+): Promise<number | null> {
+  if (locator && Object.keys(locator).length > 0) {
+    try {
+      const located = await locateElement(page, locator);
+      return located.backendNodeId;
+    } catch {
+      // locator failed, fall through to selector
+    }
+  }
+  if (selector) {
+    return findBackendNodeIdBySelector(page, selector);
+  }
+  return null;
+}
+
 async function executeToolOnPage(
   tool: string,
   args: Record<string, unknown>,
+  locator: ElementLocator | undefined,
   page: CDPPageManager
 ): Promise<unknown> {
   switch (tool) {
@@ -30,19 +57,29 @@ async function executeToolOnPage(
       return { ok: true, url };
     }
     case "click": {
-      const expression = buildClickExpression(
-        args.selector as string | undefined,
-        args.text as string | undefined
+      const backendNodeId = await resolveReplayTarget(
+        page,
+        locator,
+        args.selector as string | undefined
       );
-      return page.evaluate(expression);
+      if (!backendNodeId) {
+        throw new Error("Element not found for click");
+      }
+      await clickByBackendNodeId(page, backendNodeId);
+      return { ok: true };
     }
     case "fill": {
-      const expression = buildFillExpression(
-        args.selector as string | undefined,
-        args.text as string | undefined,
-        args.value as string
+      const backendNodeId = await resolveReplayTarget(
+        page,
+        locator,
+        args.selector as string | undefined
       );
-      return page.evaluate(expression);
+      if (!backendNodeId) {
+        throw new Error("Element not found for fill");
+      }
+      const value = args.value as string;
+      await fillByBackendNodeId(page, backendNodeId, value);
+      return { ok: true };
     }
     case "waitFor": {
       const ms = args.ms as number | undefined;
@@ -60,80 +97,12 @@ async function executeToolOnPage(
   }
 }
 
-function buildClickExpression(
-  selector: string | undefined,
-  text: string | undefined
-): string {
-  if (selector) {
-    return `
-      (() => {
-        const el = document.querySelector('${selector.replace(/'/g, "\\'")}');
-        if (!el) return { ok: false, error: 'Element not found' };
-        el.click();
-        return { ok: true };
-      })()
-    `;
-  }
-  if (text) {
-    return `
-      (() => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const el = els.find(e => e.textContent?.includes('${text.replace(/'/g, "\\'")}'));
-        if (!el) return { ok: false, error: 'Element not found by text' };
-        el.click();
-        return { ok: true };
-      })()
-    `;
-  }
-  return `(() => ({ ok: false, error: 'No selector or text' }))()`;
-}
-
-function buildFillExpression(
-  selector: string | undefined,
-  text: string | undefined,
-  value: string
-): string {
-  const escapedValue = value.replace(/'/g, "\\'").replace(/\\/g, "\\\\");
-  if (selector) {
-    return `
-      (() => {
-        const el = document.querySelector('${selector.replace(/'/g, "\\'")}');
-        if (!el) return { ok: false, error: 'Element not found' };
-        el.value = '${escapedValue}';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return { ok: true };
-      })()
-    `;
-  }
-  if (text) {
-    return `
-      (() => {
-        const labels = Array.from(document.querySelectorAll('label'));
-        const label = labels.find(l => l.textContent?.includes('${text.replace(/'/g, "\\'")}'));
-        let el = label?.htmlFor ? document.getElementById(label.htmlFor) : null;
-        if (!el && label) el = label.nextElementSibling;
-        if (!el) {
-          const els = Array.from(document.querySelectorAll('input, textarea'));
-          el = els.find(e => e.placeholder?.includes('${text.replace(/'/g, "\\'")}'));
-        }
-        if (!el) return { ok: false, error: 'Input not found' };
-        el.value = '${escapedValue}';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return { ok: true };
-      })()
-    `;
-  }
-  return `(() => ({ ok: false, error: 'No selector or text' }))()`;
-}
-
 async function tryExecuteWithFallback(
   step: PathStep,
   page: CDPPageManager
 ): Promise<ExecuteResult> {
   try {
-    await executeToolOnPage(step.tool, step.args, page);
+    await executeToolOnPage(step.tool, step.args, step.locator, page);
     return { status: "success" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -34,3 +34,7 @@
 - 切换成原生 cdp
 
 - [cdp-migration-todo](./cdp-migration-todo.md)
+
+- tool executor 和 page 里的方法不一样?
+
+- [架构问题清单](./architecture-issues.md) — 定位层、执行层、控制层等 14 个已知缺陷
