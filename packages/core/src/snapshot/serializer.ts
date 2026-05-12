@@ -39,8 +39,32 @@ const INTERACTIVE_ROLES = new Set([
   "treeitem",
 ]);
 
-function isInteractive(role?: string): boolean {
-  return !!role && INTERACTIVE_ROLES.has(role);
+function hasDOMInteractionHandlers(domInfo?: ElementDOMInfo): boolean {
+  if (!domInfo?.attributes) return false;
+  if (domInfo.attributes["data-bx-onclick"] === "1") return true;
+  const handlerAttrs = [
+    "onclick",
+    "ondblclick",
+    "onmousedown",
+    "onmouseup",
+    "onkeydown",
+    "onkeypress",
+    "onkeyup",
+    "onfocus",
+    "onblur",
+    "onchange",
+    "oninput",
+  ];
+  for (const attr of handlerAttrs) {
+    if (domInfo.attributes[attr] !== undefined) return true;
+  }
+  return false;
+}
+
+function isRefable(node: AXNode, domInfo?: ElementDOMInfo): boolean {
+  if (node.role && INTERACTIVE_ROLES.has(node.role)) return true;
+  if (hasDOMInteractionHandlers(domInfo)) return true;
+  return false;
 }
 
 function buildLocator(node: AXNode): ElementLocator {
@@ -58,8 +82,13 @@ interface RefState {
   refMap: Map<string, ElementLocator>;
 }
 
-function shouldInclude(node: AXNode): boolean {
+function shouldInclude(node: AXNode, parent?: AXNode): boolean {
   if (node.ignored) return false;
+  // InlineTextBox always duplicates parent StaticText content
+  if (node.role === "InlineTextBox") return false;
+  // StaticText that duplicates parent's accessible name is noise
+  if (node.role === "StaticText" && parent && node.name === parent.name)
+    return false;
   if (!node.role && !node.name) return false;
   return true;
 }
@@ -68,14 +97,15 @@ function serializeNode(
   node: AXNode,
   tree: AXTree,
   refState: RefState,
-  domMap?: Map<number, ElementDOMInfo>
+  domMap?: Map<number, ElementDOMInfo>,
+  parent?: AXNode
 ): SerializedElement[] {
-  if (!shouldInclude(node)) {
-    // 透明化处理 ignored 节点：递归输出子节点而非切断子树
+  if (!shouldInclude(node, parent)) {
     const kids: SerializedElement[] = [];
     for (const childId of node.childIds ?? []) {
       const child = tree.nodeMap.get(childId);
-      if (child) kids.push(...serializeNode(child, tree, refState, domMap));
+      if (child)
+        kids.push(...serializeNode(child, tree, refState, domMap, node));
     }
     return kids;
   }
@@ -87,7 +117,7 @@ function serializeNode(
 
   // 分配 ref ID
   let ref: string | undefined;
-  if (isInteractive(node.role)) {
+  if (isRefable(node, domInfo)) {
     ref = `e${refState.nextId++}`;
     refState.refMap.set(ref, buildLocator(node));
   }
@@ -103,7 +133,8 @@ function serializeNode(
   const children: SerializedElement[] = [];
   for (const childId of node.childIds ?? []) {
     const child = tree.nodeMap.get(childId);
-    if (child) children.push(...serializeNode(child, tree, refState, domMap));
+    if (child)
+      children.push(...serializeNode(child, tree, refState, domMap, node));
   }
 
   return [
@@ -119,10 +150,22 @@ function serializeNode(
   ];
 }
 
-function toCompactText(el: SerializedElement, depth = 0): string {
+function toCompactText(
+  el: SerializedElement,
+  depth = 0,
+  isRoot = false
+): string {
   const indent = "  ".repeat(depth);
 
-  // 跳过纯结构性空节点（无 ref、无 name、无 type）
+  // Omit RootWebArea — its children are the meaningful content
+  if (isRoot && el.type === "RootWebArea") {
+    return el.children
+      .map((c) => toCompactText(c, depth))
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // Skip empty structural nodes (no ref, no name, no type)
   if (!el.ref && !el.name && !el.type) {
     return el.children
       .map((c) => toCompactText(c, depth))
@@ -133,9 +176,9 @@ function toCompactText(el: SerializedElement, depth = 0): string {
   let line = `${indent}-`;
   if (el.ref) line += ` [@${el.ref}]`;
   if (el.name) line += ` ${el.name}`;
-  if (el.type) line += ` [${el.type}`;
+  line += ` [${el.type}`;
   if (el.state.length > 0) line += `, ${el.state.join(", ")}`;
-  if (el.type) line += `]`;
+  line += `]`;
 
   const lines = [line];
   for (const child of el.children) {
@@ -143,6 +186,18 @@ function toCompactText(el: SerializedElement, depth = 0): string {
     if (childText) lines.push(childText);
   }
   return lines.join("\n");
+}
+
+function collapseTransparentGenerics(
+  els: SerializedElement[]
+): SerializedElement[] {
+  return els.flatMap((el) => {
+    el.children = collapseTransparentGenerics(el.children);
+    const isTransparent =
+      el.type === "generic" && !el.name && !el.ref && el.state.length === 0;
+    if (isTransparent) return el.children;
+    return [el];
+  });
 }
 
 export function serializeSnapshot(
@@ -162,11 +217,12 @@ export function serializeSnapshot(
     }
   }
 
-  const text = roots
-    .map((r) => toCompactText(r))
+  const collapsed = collapseTransparentGenerics(roots);
+  const text = collapsed
+    .map((r) => toCompactText(r, 0, true))
     .filter(Boolean)
     .join("\n");
-  return { text, elements: roots, refMap: refState.refMap };
+  return { text, elements: collapsed, refMap: refState.refMap };
 }
 
 function markVisited(node: AXNode, tree: AXTree, visited: Set<string>): void {

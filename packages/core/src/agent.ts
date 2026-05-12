@@ -17,7 +17,7 @@ import { replayPath } from "./memory/replayer.js";
 import type { MemorizedPath } from "./memory/types.js";
 import { ACT_SYSTEM_PROMPT } from "./prompts/system.js";
 import { buildHandoverMessages } from "./prompts/handover.js";
-import { getAXTree } from "./snapshot/axtree.js";
+import { getAXTree, collectDOMInfo } from "./snapshot/axtree.js";
 import { serializeSnapshot } from "./snapshot/serializer.js";
 
 function applyVariables(
@@ -216,7 +216,8 @@ export class BrowserAgent {
       | undefined;
     try {
       const tree = await getAXTree(this.pageManager);
-      const output = serializeSnapshot(tree);
+      const domMap = await collectDOMInfo(this.pageManager, tree.nodes);
+      const output = serializeSnapshot(tree, domMap);
       snapshot = output.text;
       refMap = output.refMap;
     } catch {

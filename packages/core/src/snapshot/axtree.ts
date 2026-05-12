@@ -1,4 +1,13 @@
 import type { CDPPageManager } from "../cdp/page.js";
+import type { ElementDOMInfo } from "./adapter.js";
+
+interface CDPFlattenedNode {
+  backendNodeId?: number;
+  localName?: string;
+  nodeName?: string;
+  nodeType?: number;
+  attributes?: string[];
+}
 
 export interface AXNode {
   nodeId: string;
@@ -66,4 +75,48 @@ export function getNodeState(node: AXNode): Record<string, boolean> {
     }
   }
   return state;
+}
+
+export async function collectDOMInfo(
+  page: CDPPageManager,
+  axNodes: AXNode[]
+): Promise<Map<number, ElementDOMInfo>> {
+  const idSet = new Set(
+    axNodes
+      .filter((n) => n.backendDOMNodeId !== undefined && n.backendDOMNodeId > 0)
+      .map((n) => n.backendDOMNodeId!)
+  );
+  if (idSet.size === 0) return new Map();
+
+  await page.send("DOM.enable", {});
+
+  // Mark elements with JS onclick property so DOM.getFlattenedDocument
+  // can see them (getAttribute only returns HTML attributes, not JS-set properties)
+  await page.send("Runtime.evaluate", {
+    expression: `document.querySelectorAll('*').forEach(function(el) {
+      if (el.onclick) el.setAttribute('data-bx-onclick', '1');
+    })`,
+  });
+
+  // Use generous depth to reach Cloudscape/AWS UI component internals
+  const { nodes } = (await page.send("DOM.getFlattenedDocument", {
+    depth: 32,
+    pierce: true,
+  })) as { nodes: CDPFlattenedNode[] };
+
+  const map = new Map<number, ElementDOMInfo>();
+  for (const cdpNode of nodes) {
+    if (!cdpNode.backendNodeId || !idSet.has(cdpNode.backendNodeId)) continue;
+    const attrs: Record<string, string> = {};
+    const raw = cdpNode.attributes ?? [];
+    for (let i = 0; i < raw.length - 1; i += 2) {
+      attrs[raw[i]] = raw[i + 1];
+    }
+    map.set(cdpNode.backendNodeId, {
+      tagName: cdpNode.localName ?? cdpNode.nodeName?.toLowerCase(),
+      className: attrs["class"] ?? "",
+      attributes: attrs,
+    });
+  }
+  return map;
 }
