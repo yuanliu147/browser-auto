@@ -44,7 +44,9 @@ export async function takeScreenshot(
   filename: string
 ): Promise<TraceScreenshotInfo> {
   try {
-    const data = await pageManager.screenshot();
+    const { data } = (await pageManager.send("Page.captureScreenshot")) as {
+      data: string;
+    };
     const buf = Buffer.from(data, "base64");
     const filepath = join(dir, "screenshots", filename);
     await writeFile(filepath, buf);

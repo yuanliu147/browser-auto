@@ -85,27 +85,4 @@ export class CDPPageManager {
     const sessionId = await this.getCurrentSessionId();
     return this.browserClient.send(method, params, sessionId);
   }
-
-  async navigate(url: string): Promise<void> {
-    await this.send("Page.navigate", { url });
-  }
-
-  async getFrameTree(): Promise<Record<string, unknown>> {
-    return this.send("Page.getFrameTree");
-  }
-
-  async evaluate(expression: string): Promise<unknown> {
-    const { result } = (await this.send("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-    })) as { result: { value?: unknown } };
-    return result?.value;
-  }
-
-  async screenshot(): Promise<string> {
-    const { data } = (await this.send("Page.captureScreenshot")) as {
-      data: string;
-    };
-    return data;
-  }
 }

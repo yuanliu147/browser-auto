@@ -38,3 +38,5 @@
 - tool executor 和 page 里的方法不一样?
 
 - [架构问题清单](./architecture-issues.md) — 定位层、执行层、控制层等 14 个已知缺陷
+
+-消息管理？过期的 snapshot 去掉。

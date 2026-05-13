@@ -9,7 +9,9 @@ export function createScreenshotTool(pageManager: CDPPageManager): Tool {
       "Take a screenshot of the current page. Returns base64-encoded PNG.",
     parameters: z.object({}),
     execute: async (_args, _context) => {
-      const data = await pageManager.screenshot();
+      const { data } = (await pageManager.send("Page.captureScreenshot")) as {
+        data: string;
+      };
       return { base64: data };
     },
   };

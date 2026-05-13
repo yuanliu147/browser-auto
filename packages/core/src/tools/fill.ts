@@ -1,11 +1,8 @@
 import { z } from "zod";
 import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
-import { locateElement } from "../locator/find.js";
-import {
-  fillByBackendNodeId,
-  findBackendNodeIdBySelector,
-} from "../interaction/index.js";
+import { fill } from "../actions/fill.js";
+import type { ElementLocator } from "../locator/types.js";
 
 export function createFillTool(pageManager: CDPPageManager): Tool {
   return {
@@ -21,42 +18,23 @@ export function createFillTool(pageManager: CDPPageManager): Tool {
       value: z.string().describe("Value to fill in"),
     }),
     execute: async ({ ref, selector, value }, context) => {
-      const backendNodeId = await resolveTarget(
-        pageManager,
-        context.refMap,
-        ref as string | undefined,
-        selector as string | undefined
-      );
-      if (!backendNodeId) {
-        throw new Error(
-          `Element not found: ref=${ref ?? "none"}, selector=${selector ?? "none"}`
-        );
+      let locator: ElementLocator | undefined;
+      const refStr = ref as string | undefined;
+      if (refStr) {
+        const key = refStr.startsWith("@") ? refStr.slice(1) : refStr;
+        locator = context.refMap?.get(key);
+        if (!locator) {
+          throw new Error(
+            `Ref "${refStr}" not found in snapshot. Call getSnapshot first.`
+          );
+        }
       }
-      await fillByBackendNodeId(pageManager, backendNodeId, value as string);
-      return { ok: true };
+      return fill(
+        pageManager,
+        locator,
+        selector as string | undefined,
+        value as string
+      );
     },
   };
-}
-
-async function resolveTarget(
-  pageManager: CDPPageManager,
-  refMap: Map<string, import("../locator/types.js").ElementLocator> | undefined,
-  ref: string | undefined,
-  selector: string | undefined
-): Promise<number | null> {
-  if (ref) {
-    const key = ref.startsWith("@") ? ref.slice(1) : ref;
-    const locator = refMap?.get(key);
-    if (!locator) {
-      throw new Error(
-        `Ref "${ref}" not found in snapshot. Call getSnapshot first.`
-      );
-    }
-    const located = await locateElement(pageManager, locator);
-    return located.backendNodeId;
-  }
-  if (selector) {
-    return findBackendNodeIdBySelector(pageManager, selector);
-  }
-  return null;
 }

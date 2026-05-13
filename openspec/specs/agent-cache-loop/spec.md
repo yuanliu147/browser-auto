@@ -54,7 +54,8 @@
 #### Scenario: Full replay success
 
 - **WHEN** memory 路径的每一步执行均成功
-- **THEN** 系统 SHALL 标记任务完成
+- **THEN** 系统 SHALL 使用 `actions/` 层的统一原语执行每一步
+- **AND** SHALL 标记任务完成
 - **AND** SHALL 不调用 LLM
 
 #### Scenario: Partial replay failure with handover
@@ -74,14 +75,14 @@
 
 - **WHEN** replay 某步时首选 label text `用户名` 未找到匹配
 - **AND** 该步骤预存了 aria-label `username-input`
-- **THEN** 系统 SHALL 尝试 aria-label 定位
+- **THEN** 系统 SHALL 通过 `actions/` 层尝试 aria-label 定位
 - **AND** 命中时 SHALL 成功执行该步骤
 
 #### Scenario: Fallback to structural position
 
 - **WHEN** label text 和 aria-label 均失效
 - **AND** 该步骤记录了 structural hint `{tagName: "input", formIndex: 0, indexInForm: 2}`
-- **THEN** 系统 SHALL 尝试结构位置定位
+- **THEN** 系统 SHALL 通过 `actions/` 层尝试结构位置定位
 - **AND** 命中时 SHALL 成功执行该步骤
 
 #### Scenario: Memory self-healing on fallback success

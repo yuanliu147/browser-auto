@@ -279,8 +279,18 @@ export class BrowserAgent {
 
   async getPageState(): Promise<{ url: string; title: string }> {
     const [url, title] = await Promise.all([
-      this.pageManager.evaluate("window.location.href"),
-      this.pageManager.evaluate("document.title"),
+      this.pageManager
+        .send("Runtime.evaluate", {
+          expression: "window.location.href",
+          returnByValue: true,
+        })
+        .then((r) => (r as { result?: { value?: unknown } }).result?.value),
+      this.pageManager
+        .send("Runtime.evaluate", {
+          expression: "document.title",
+          returnByValue: true,
+        })
+        .then((r) => (r as { result?: { value?: unknown } }).result?.value),
     ]);
     return { url: String(url ?? ""), title: String(title ?? "") };
   }

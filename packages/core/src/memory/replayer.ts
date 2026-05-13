@@ -1,12 +1,7 @@
 import type { CDPPageManager } from "../cdp/page.js";
 import type { PathStep, MemorizedPath } from "./types.js";
-import { locateElement } from "../locator/find.js";
-import type { ElementLocator } from "../locator/types.js";
-import {
-  clickByBackendNodeId,
-  fillByBackendNodeId,
-  findBackendNodeIdBySelector,
-} from "../interaction/index.js";
+import { click, fill, navigate, wait } from "../actions/index.js";
+import { listTabs, newTab } from "../actions/tabs.js";
 
 export type ReplayStatus = "success" | "partial" | "failed";
 
@@ -25,75 +20,49 @@ export interface ExecuteResult {
   error?: string;
 }
 
-async function resolveReplayTarget(
-  page: CDPPageManager,
-  locator: ElementLocator | undefined,
-  selector: string | undefined
-): Promise<number | null> {
-  if (locator && Object.keys(locator).length > 0) {
-    try {
-      const located = await locateElement(page, locator);
-      return located.backendNodeId;
-    } catch {
-      // locator failed, fall through to selector
-    }
-  }
-  if (selector) {
-    return findBackendNodeIdBySelector(page, selector);
-  }
-  return null;
-}
-
-async function executeToolOnPage(
-  tool: string,
-  args: Record<string, unknown>,
-  locator: ElementLocator | undefined,
+async function executeStepOnPage(
+  step: PathStep,
   page: CDPPageManager
 ): Promise<unknown> {
-  switch (tool) {
+  switch (step.tool) {
     case "navigate": {
-      const url = args.url as string;
-      await page.navigate(url);
-      return { ok: true, url };
+      const url = step.args.url as string;
+      return navigate(page, url);
     }
     case "click": {
-      const backendNodeId = await resolveReplayTarget(
+      return click(
         page,
-        locator,
-        args.selector as string | undefined
+        step.locator,
+        step.args.selector as string | undefined
       );
-      if (!backendNodeId) {
-        throw new Error("Element not found for click");
-      }
-      await clickByBackendNodeId(page, backendNodeId);
-      return { ok: true };
     }
     case "fill": {
-      const backendNodeId = await resolveReplayTarget(
+      return fill(
         page,
-        locator,
-        args.selector as string | undefined
+        step.locator,
+        step.args.selector as string | undefined,
+        step.args.value as string
       );
-      if (!backendNodeId) {
-        throw new Error("Element not found for fill");
-      }
-      const value = args.value as string;
-      await fillByBackendNodeId(page, backendNodeId, value);
-      return { ok: true };
     }
     case "waitFor": {
-      const ms = args.ms as number | undefined;
+      const ms = step.args.ms as number | undefined;
       if (ms !== undefined) {
-        await new Promise((r) => setTimeout(r, ms));
-        return { ok: true };
+        return wait(page, undefined, ms);
       }
-      return { ok: true };
+      return wait(page, step.args.selector as string | undefined, undefined);
     }
     case "tabs": {
+      const action = step.args.action as string;
+      if (action === "list") {
+        return listTabs(page);
+      }
+      if (action === "new") {
+        return newTab(page, step.args.url as string | undefined);
+      }
       return { ok: true };
     }
     default:
-      throw new Error(`Unknown tool: ${tool}`);
+      throw new Error(`Unknown tool: ${step.tool}`);
   }
 }
 
@@ -102,7 +71,7 @@ async function tryExecuteWithFallback(
   page: CDPPageManager
 ): Promise<ExecuteResult> {
   try {
-    await executeToolOnPage(step.tool, step.args, step.locator, page);
+    await executeStepOnPage(step, page);
     return { status: "success" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

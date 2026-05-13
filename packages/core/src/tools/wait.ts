@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
+import { wait } from "../actions/wait.js";
 
 export function createWaitForTool(pageManager: CDPPageManager): Tool {
   return {
@@ -16,25 +17,11 @@ export function createWaitForTool(pageManager: CDPPageManager): Tool {
         .describe("Element state to wait for (defaults to visible)"),
     }),
     execute: async ({ selector, ms }, _context) => {
-      const sel = selector as string | undefined;
-      const waitMs = ms as number | undefined;
-      if (sel) {
-        const start = Date.now();
-        const timeout = 10000;
-        while (Date.now() - start < timeout) {
-          const result = (await pageManager.evaluate(
-            `!!document.querySelector(${JSON.stringify(sel)})`
-          )) as boolean;
-          if (result) return { ok: true };
-          await new Promise((r) => setTimeout(r, 200));
-        }
-        throw new Error(`Timeout waiting for selector: ${sel}`);
-      }
-      if (waitMs !== undefined) {
-        await new Promise((r) => setTimeout(r, waitMs));
-        return { ok: true };
-      }
-      throw new Error("Provide either selector or ms");
+      return wait(
+        pageManager,
+        selector as string | undefined,
+        ms as number | undefined
+      );
     },
   };
 }

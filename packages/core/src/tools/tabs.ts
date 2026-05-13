@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CDPPageManager } from "../cdp/page.js";
 import type { Tool } from "../loop/types.js";
+import { listTabs, switchTab, newTab } from "../actions/tabs.js";
 
 export function createTabsTool(pageManager: CDPPageManager): Tool {
   return {
@@ -14,26 +15,17 @@ export function createTabsTool(pageManager: CDPPageManager): Tool {
     }),
     execute: async ({ action, url, index }, _context) => {
       if (action === "list") {
-        const { targetInfos } = (await pageManager.send(
-          "Target.getTargets"
-        )) as {
-          targetInfos: Array<{ url: string; title: string; type: string }>;
-        };
-        const tabs = targetInfos
-          .filter((t) => t.type === "page")
-          .map((t, i) => ({ index: i, url: t.url, title: t.title }));
+        const tabs = await listTabs(pageManager);
         return { tabs };
       }
       if (action === "switch") {
         if (index === undefined) throw new Error("switch requires index");
-        // CDP doesn't have direct tab switch; we track current target
+        await switchTab(pageManager, index as number);
         return { ok: true };
       }
       if (action === "new") {
-        const { targetId } = (await pageManager.send("Target.createTarget", {
-          url: url ?? "about:blank",
-        })) as { targetId: string };
-        return { ok: true, targetId };
+        const result = await newTab(pageManager, url as string | undefined);
+        return result;
       }
       throw new Error(`Unknown action: ${action as string}`);
     },
